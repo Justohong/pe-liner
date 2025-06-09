@@ -3,13 +3,33 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+// import { Checkbox } from "@/components/ui/checkbox" // If using actual UI elements later
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select" // If using actual UI elements later
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Download, FileSpreadsheet, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import type { GroupData } from '@/components/quantityData/UnitPriceSheetTable';
-import { db } from '@/utils/db';
+import { db, MaterialData, LaborData, MachineryData } from '@/utils/db'; // Import data types
 import * as XLSX from 'xlsx';
 import { sessionStore } from '@/utils/sessionStore';
+import { getDuctilePipeStandardLength, getKpMechanicalJointParts } from '@/lib/ductileIronHandbookUtils'; // Handbook utils
+import { standardCostData } from '@/lib/standardCostData'; // For surcharge rates, indirect cost rates (conceptual)
+
+// --- Helper function to find material details ---
+const findMaterialByNameAndSpec = (
+  materials: MaterialData[],
+  name: string,
+  specSize?: number | string // Can be number for diameter or string for general spec
+): MaterialData | undefined => {
+  return materials.find(m => {
+    const nameMatch = m.name.includes(name) || (m.품명 && m.품명.includes(name));
+    if (!specSize) return nameMatch;
+    const specStr = String(specSize);
+    const specMatch = m.spec.includes(specStr) || (m.호칭지름 && m.호칭지름.includes(specStr));
+    return nameMatch && specMatch;
+  });
+};
+
 
 // 규격 정보 인터페이스 추가
 interface SpecInfo {
@@ -41,9 +61,44 @@ interface DocumentItem {
   노무비금액: number;
   경비단가: number;
   경비금액: number;
-  비고?: string;
+  비고?: string; // Remarks, will include surcharge info etc.
+  품셈코드?: string; // To store standard cost code
+  calculationDetails?: any[]; // For '산출근거' sheet
   isSpecMatched?: boolean; // 규격 매칭 여부 추가
 }
+
+// Surcharge and Additional Cost States (Conceptual - normally from React state via UI)
+const surchargeConditions = {
+  terrain: '평지', // 예: '평지', '산악지', '시가지'
+  workingHours: '주간', // 예: '주간', '야간'
+  riskTypes: [], // 예: ['활선작업', '고소작업']
+  // ... 기타 할증 조건
+};
+
+const additionalCostOptions = {
+  applyPESleeve: false, // PE 슬리브 피복 적용 여부
+  protectiveConcreteType: '없음', // 보호 콘크리트 종류 (예: '없음', 'A형', 'B형')
+  // ... 기타 추가 비용 옵션
+};
+
+// Surcharge Rates (Conceptual - could be moved to standardCostData.ts or a new module)
+const surchargeRates = {
+  terrain: {
+    '산악지': { labor: 0.2, expense: 0.1 }, // 노무비 20%, 경비 10% 할증
+    '시가지': { labor: 0.15, expense: 0.05 },
+  },
+  workingHours: {
+    '야간': { labor: 0.25 }, // 노무비 25% 할증
+  },
+  // ... 기타 할증률
+};
+
+// Indirect Cost Rates (Conceptual)
+const indirectCostRates = {
+  generalManagement: 0.05, // 일반관리비 5%
+  profit: 0.10, // 이윤 10%
+};
+
 
 // 규격 매칭을 위한 유틸리티 함수 추가
 function extractSizeNumber(spec: string): number {
@@ -94,6 +149,11 @@ export default function PriceDocumentGenerator() {
   // 오류 메시지 상태
   const [error, setError] = useState<string>('');
 
+  // DB 데이터 상태 (자재, 노임 단가 조회용)
+  const [materialDB, setMaterialDB] = useState<MaterialData[]>([]);
+  const [laborDB, setLaborDB] = useState<LaborData[]>([]);
+  // const [machineryDB, setMachineryDB] = useState<MachineryData[]>([]); // 필요시 추가
+
   // 작업정보 기본 상태 (규격이 없을 때 사용)
   const [defaultWorkInfo, setDefaultWorkInfo] = useState({
     totalLength: 0,
@@ -110,38 +170,32 @@ export default function PriceDocumentGenerator() {
 
   // 컴포넌트 마운트 시 데이터 로드
   useEffect(() => {
-    // 그룹 데이터가 없는 경우 세션스토리지에서 로드 시도
-    if (!groupData || groupData.length === 0) {
-      try {
-        const storedGroups = sessionStore.getUnitPriceGroups();
-        if (storedGroups) {
-          console.log('세션스토리지에서 그룹 데이터 로드:', storedGroups.length);
-          setGroupData(storedGroups);
-        }
-      } catch (error) {
-        console.error('그룹 데이터 로드 중 오류:', error);
-      }
-    }
-    
-    // 프로젝트 기본 정보 로드
-    const storedProjectDetails = sessionStore.getProjectDetails();
-    if (storedProjectDetails) {
-      setProjectDetails(storedProjectDetails);
-    }
+    try {
+      const storedGroups = sessionStore.getUnitPriceGroups();
+      if (storedGroups) setGroupData(storedGroups);
 
-    // 규격 정보 로드
-    const storedSpecInfos = sessionStore.getSpecInfos();
-    if (storedSpecInfos) {
-      setSpecInfos(storedSpecInfos);
-      setHasSpecs(storedSpecInfos.length > 0);
+      const storedProjectDetails = sessionStore.getProjectDetails();
+      if (storedProjectDetails) setProjectDetails(storedProjectDetails);
+
+      const storedSpecInfos = sessionStore.getSpecInfos();
+      if (storedSpecInfos) {
+        setSpecInfos(storedSpecInfos);
+        setHasSpecs(storedSpecInfos.length > 0);
+      }
+
+      const storedDocumentItems = sessionStore.getDocumentItems();
+      if (storedDocumentItems) setDocumentItems(storedDocumentItems);
+
+      // DB 데이터 로드
+      setMaterialDB(db.getMaterialData());
+      setLaborDB(db.getLaborData());
+      // setMachineryDB(db.getMachineryData()); // 필요시
+
+    } catch (e) {
+      console.error("Error loading data from session or DB:", e);
+      setError("데이터 로드 중 오류 발생");
     }
-    
-    // 이미 저장된 문서 항목 로드
-    const storedDocumentItems = sessionStore.getDocumentItems();
-    if (storedDocumentItems) {
-      setDocumentItems(storedDocumentItems);
-    }
-  }, [groupData]);
+  }, []); // groupData 제거 -> 무한 루프 방지
 
   // 프로젝트 정보 변경 핸들러
   const handleProjectChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -213,227 +267,329 @@ export default function PriceDocumentGenerator() {
     // 일위대가 그룹 데이터로부터 내역서 항목 생성
     return groupData.map(group => {
       // 공종명과 단위에 따라 적절한 수량 결정
-      let quantity = 1;
+      let quantity = 1; // 기본 수량
+      const calculationDetails: any[] = []; // 산출근거 기록용
+      let remarks = group.비고 || ''; // UnitPriceSheetTable에서 가져온 비고
+
+      // 수량 결정 로직 (기존 로직 유지 및 개선)
+      // isSpecMatched는 groupData 생성 시 UnitPriceSheetTable에서 넘어온다고 가정
+      // 여기서는 specInfo가 현재 그룹과 매칭되는지 다시 확인하거나, groupData에 isSpecMatched가 있어야 함.
+      // 아래는 specInfo (사용자 입력) 기준으로 수량을 다시 계산하는 예시
       
-      // 규격 매칭 여부
-      const isSpecMatched = matchSpecWithItem(group.규격, specInfo.name);
-      
-      // 규격이 매칭되지 않으면 수량을 0으로 설정
-      if (!isSpecMatched) {
-        quantity = 0;
-      } else {
-        // 단위가 m인 경우 작업 총길이 적용
-        if (group.단위 === 'm') {
-          quantity = specInfo.totalLength;
-        } 
-        // 단위가 개소인 경우 
-        else if (group.단위 === '개소') {
-          // 곡관 관련 공종인 경우
-          if (group.공종명.includes('곡관') || group.공종명.includes('굴곡') || group.공종명.includes('굽힘')) {
-            quantity = specInfo.bendCount;
-          } 
-          // 나머지 모든 개소 단위 항목은 작업 구멍수 적용
-          else {
-            quantity = specInfo.workHoles;
-          }
+      const workInfo = hasSpecs ? specInfo : defaultWorkInfo;
+      const isPipeMaterial = group.공종명.includes('관') && (group.공종명.includes('덕타일') || group.공종명.includes('주철관'));
+
+      if (group.단위 === 'm') {
+        quantity = workInfo.totalLength;
+      } else if (group.단위 === '개소') {
+        if (group.공종명.includes('곡관') || group.공종명.includes('굴곡') || group.공종명.includes('굽힘')) {
+          quantity = workInfo.bendCount;
+        } else {
+          quantity = workInfo.workHoles;
+        }
+      } else if (group.단위 === '본' && isPipeMaterial && workInfo.totalLength > 0) {
+        // 관 자재이고, 총 길이(m)가 주어졌으며, 단가가 '본'당 단가인 경우 -> 총 본 수 계산
+        const pipeMaterial = findMaterialByNameAndSpec(materialDB, group.공종명, extractSizeNumber(group.규격));
+        const standardLength = pipeMaterial ? getDuctilePipeStandardLength(pipeMaterial.관종분류 || '2종관', extractSizeNumber(group.규격)) : null;
+        if (standardLength && standardLength > 0) {
+          quantity = Math.ceil(workInfo.totalLength / standardLength); // 총 길이를 본당 표준 길이로 나눠 본 수 계산 (올림)
+          calculationDetails.push({
+            type: '수량환산(본)',
+            description: `총 연장 ${workInfo.totalLength}m / 표준길이 ${standardLength}m/본 = ${quantity}본`,
+          });
+        } else {
+          quantity = 0; // 표준 길이를 모르면 수량 계산 불가
+          remarks += " (표준길이 정보없어 본 수량 계산불가)";
         }
       }
       
-      // 수량에 따른 금액 계산
-      const totalPrice = group.합계금액 * quantity;
-      const materialPrice = group.재료비금액 * quantity;
-      const laborPrice = group.노무비금액 * quantity;
-      const expensePrice = group.경비금액 * quantity;
+      // 단가 및 금액 초기화 (groupData에서 가져옴)
+      let unitMaterialCost = group.재료비금액; // UnitPriceSheetTable에서 계산된 단위당 금액
+      let unitLaborCost = group.노무비금액;
+      let unitExpenseCost = group.경비금액;
+
+      // --- 부속품 수량 재계산 (필요시) ---
+      // 예: KP 메커니컬 조인트의 경우, 총 접합개소에 따라 부속품 총수량 및 비용 재계산
+      // UnitPriceSheetTable에서 이미 단위 작업당 부속품 비용이 포함되었다면, 여기서는 수량만 곱하면 됨.
+      // 만약 더 상세한 산출근거가 필요하다면 여기서 재계산.
+      // 현재는 UnitPriceSheetTable 결과를 신뢰하고 넘어감.
+
+      // --- 할증 적용 ---
+      let laborSurchargeRate = 0;
+      let expenseSurchargeRate = 0;
+      let surchargeRemark = "";
+
+      if (surchargeConditions.terrain && surchargeRates.terrain[surchargeConditions.terrain]) {
+        laborSurchargeRate += surchargeRates.terrain[surchargeConditions.terrain].labor || 0;
+        expenseSurchargeRate += surchargeRates.terrain[surchargeConditions.terrain].expense || 0;
+        surchargeRemark += `지형(${surchargeConditions.terrain}):노무${(surchargeRates.terrain[surchargeConditions.terrain].labor || 0)*100}%,경비${(surchargeRates.terrain[surchargeConditions.terrain].expense || 0)*100}%; `;
+      }
+      if (surchargeConditions.workingHours && surchargeRates.workingHours[surchargeConditions.workingHours]) {
+        laborSurchargeRate += surchargeRates.workingHours[surchargeConditions.workingHours].labor || 0;
+        surchargeRemark += `작업시간(${surchargeConditions.workingHours}):노무${(surchargeRates.workingHours[surchargeConditions.workingHours].labor || 0)*100}%; `;
+      }
+      // 기타 위험작업 등 할증 추가 가능
+
+      const originalUnitLaborCost = unitLaborCost;
+      const originalUnitExpenseCost = unitExpenseCost;
+
+      if (laborSurchargeRate > 0) {
+        unitLaborCost *= (1 + laborSurchargeRate);
+        calculationDetails.push({ type: '노무비할증', rate: laborSurchargeRate, amount: unitLaborCost - originalUnitLaborCost });
+      }
+      if (expenseSurchargeRate > 0) {
+        unitExpenseCost *= (1 + expenseSurchargeRate);
+        calculationDetails.push({ type: '경비할증', rate: expenseSurchargeRate, amount: unitExpenseCost - originalUnitExpenseCost });
+      }
+      if (surchargeRemark) remarks = surchargeRemark + remarks;
+
+      // --- 추가 비용 항목 적용 (예: PE 슬리브) ---
+      if (additionalCostOptions.applyPESleeve && isPipeMaterial) {
+        const sleeveMaterial = findMaterialByNameAndSpec(materialDB, 'PE슬리브', extractSizeNumber(group.규격));
+        if (sleeveMaterial && sleeveMaterial.price) {
+          // PE 슬리브 비용은 m당 단가로 가정, group.단위가 '본'이면 표준길이 곱해야 함.
+          let sleeveCostPerUnit = 0;
+          if (group.단위 === 'm') {
+            sleeveCostPerUnit = sleeveMaterial.price;
+          } else if (group.단위 === '본') {
+            const pipeMaterial = findMaterialByNameAndSpec(materialDB, group.공종명, extractSizeNumber(group.규격));
+            const standardLength = pipeMaterial ? getDuctilePipeStandardLength(pipeMaterial.관종분류 || '2종관', extractSizeNumber(group.규격)) : null;
+            if (standardLength) sleeveCostPerUnit = sleeveMaterial.price * standardLength;
+          }
+          unitMaterialCost += sleeveCostPerUnit;
+          remarks += ` PE슬리브 적용 (+${sleeveCostPerUnit.toFixed(0)}원/단위);`;
+          calculationDetails.push({ type: '추가재료(PE슬리브)', amount: sleeveCostPerUnit });
+        }
+      }
+
+      // 수량에 따른 최종 금액 계산
+      const totalMaterialPrice = unitMaterialCost * quantity;
+      const totalLaborPrice = unitLaborCost * quantity;
+      const totalExpensePrice = unitExpenseCost * quantity;
+      const totalItemPrice = totalMaterialPrice + totalLaborPrice + totalExpensePrice;
       
       return {
         공종명: group.공종명,
         규격: group.규격,
         수량: quantity,
         단위: group.단위,
-        합계단가: group.합계금액, // 단가는 원래 단가 그대로
-        합계금액: totalPrice, // 수량 * 단가
-        재료비단가: group.재료비금액,
-        재료비금액: materialPrice, // 수량 * 단가
-        노무비단가: group.노무비금액,
-        노무비금액: laborPrice, // 수량 * 단가
-        경비단가: group.경비금액,
-        경비금액: expensePrice, // 수량 * 단가
-        비고: isSpecMatched ? '' : '규격 불일치', // 규격 불일치 표시
-        isSpecMatched // 매칭 여부 추가
+        합계단가: unitMaterialCost + unitLaborCost + unitExpenseCost, // 할증 및 추가비용 포함된 단가
+        합계금액: totalItemPrice,
+        재료비단가: unitMaterialCost,
+        재료비금액: totalMaterialPrice,
+        노무비단가: unitLaborCost,
+        노무비금액: totalLaborPrice,
+        경비단가: unitExpenseCost,
+        경비금액: totalExpensePrice,
+        비고: remarks.trim(),
+        품셈코드: group.품셈코드 || '', // UnitPriceSheetTable에서 전달된 품셈코드
+        calculationDetails,
+        isSpecMatched: specInfo ? matchSpecWithItem(group.규격, specInfo.name) : true,
       };
     });
   };
 
   // 내역서 생성 함수
   const generateDocument = () => {
-    // 필수 필드 확인
     if (!projectDetails.projectName) {
       setError('시행공사명을 입력해주세요.');
       return;
     }
-
-    // 일위대가 그룹 데이터가 있는지 확인
     if (!groupData || groupData.length === 0) {
       setError('일위대가 데이터가 없습니다. 먼저 일위대가_호표 데이터를 확인해주세요.');
       return;
     }
-
-    // 규격 정보가 있는지 확인
     if (hasSpecs && specInfos.length === 0) {
       setError('규격 정보가 없습니다. 규격을 추가하거나 규격 추가 옵션을 해제해주세요.');
       return;
     }
 
-    // 일위대가목록 항목을 단 한 번만 순회하여 내역서 생성
     let allDocumentItems: DocumentItem[] = [];
-    let totalAmount = 0;
-    let totalMaterialAmount = 0;
-    let totalLaborAmount = 0;
-    let totalExpenseAmount = 0;
+    let runningTotalMaterial = 0;
+    let runningTotalLabor = 0;
+    let runningTotalExpense = 0;
 
-    // 규격 추가되지 않은 경우
-    if (!hasSpecs) {
-      // 각 일위대가 항목에 대해 한 번만 계산
-      groupData.forEach(group => {
-        let quantity = 1;
-        
-        // 단위에 따른 수량 결정
-        if (group.단위 === 'm') {
-          quantity = defaultWorkInfo.totalLength;
-        } else if (group.단위 === '개소') {
-          // 곡관 관련 공종인 경우
-          if (group.공종명.includes('곡관') || group.공종명.includes('굴곡') || group.공종명.includes('굽힘')) {
-            quantity = defaultWorkInfo.bendCount;
-          } else {
-            quantity = defaultWorkInfo.workHoles;
+    const processGroup = (group: GroupData, currentSpecInfo?: SpecInfo) => {
+      // generateItemsForSpec 대신 직접 로직 통합 및 확장
+      let quantity = 1;
+      const calculationDetails: any[] = [];
+      let remarks = group.품셈코드 ? `품셈:${group.품셈코드}; ` : ''; // groupData에 품셈코드가 있다고 가정
+
+      const workInfo = currentSpecInfo || defaultWorkInfo;
+      const isPipeMaterial = group.공종명.includes('관') && (group.공종명.includes('덕타일') || group.공종명.includes('주철관'));
+
+      if (group.단위 === 'm') {
+        quantity = workInfo.totalLength;
+      } else if (group.단위 === '개소') {
+        if (group.공종명.includes('곡관') || group.공종명.includes('굴곡') || group.공종명.includes('굽힘')) {
+          quantity = workInfo.bendCount;
+        } else {
+          quantity = workInfo.workHoles;
+        }
+      } else if (group.단위 === '본' && isPipeMaterial && workInfo.totalLength > 0) {
+        const pipeSize = extractSizeNumber(group.규격)
+        const pipeMaterial = findMaterialByNameAndSpec(materialDB, group.공종명, pipeSize);
+        const standardLength = pipeMaterial ? getDuctilePipeStandardLength(pipeMaterial.관종분류 || '2종관', pipeSize) : null;
+        if (standardLength && standardLength > 0) {
+          quantity = Math.ceil(workInfo.totalLength / standardLength);
+          calculationDetails.push({ type: '수량환산(본)', description: `총 연장 ${workInfo.totalLength}m / 표준길이 ${standardLength}m/본 = ${quantity}본`});
+        } else {
+          quantity = 0; remarks += "표준길이 정보부족; ";
+        }
+      }
+
+      let itemMaterialCost = group.재료비금액; // UnitPriceSheetTable에서 계산된 단위 금액
+      let itemLaborCost = group.노무비금액;
+      let itemExpenseCost = group.경비금액;
+
+      // 할증 적용
+      let laborSurchargeRate = 0; let expenseSurchargeRate = 0; let surchargeRemarkParts: string[] = [];
+      if (surchargeConditions.terrain && surchargeRates.terrain[surchargeConditions.terrain]) {
+        const { labor = 0, expense = 0 } = surchargeRates.terrain[surchargeConditions.terrain];
+        laborSurchargeRate += labor; expenseSurchargeRate += expense;
+        surchargeRemarkParts.push(`지형(${surchargeConditions.terrain}):노${labor*100}%,경${expense*100}%`);
+      }
+      // ... 다른 할증 조건들 ...
+      if (surchargeRemarkParts.length > 0) remarks += surchargeRemarkParts.join('; ') + '; ';
+
+      const originalItemLaborCost = itemLaborCost;
+      const originalItemExpenseCost = itemExpenseCost;
+      if (laborSurchargeRate > 0) itemLaborCost *= (1 + laborSurchargeRate);
+      if (expenseSurchargeRate > 0) itemExpenseCost *= (1 + expenseSurchargeRate);
+      if (itemLaborCost !== originalItemLaborCost) calculationDetails.push({ type: '노무비할증', from: originalItemLaborCost, to: itemLaborCost, rate: laborSurchargeRate });
+      if (itemExpenseCost !== originalItemExpenseCost) calculationDetails.push({ type: '경비할증', from: originalItemExpenseCost, to: itemExpenseCost, rate: expenseSurchargeRate });
+
+      // 추가 비용 (PE 슬리브 등)
+      if (additionalCostOptions.applyPESleeve && isPipeMaterial) {
+        const pipeSize = extractSizeNumber(group.규격);
+        const sleeveMaterial = findMaterialByNameAndSpec(materialDB, 'PE슬리브', pipeSize);
+        if (sleeveMaterial && sleeveMaterial.price) {
+          let sleeveCostPerBaseUnit = 0; // group.단위 에 대한 슬리브 비용
+          if (group.단위 === 'm') sleeveCostPerBaseUnit = sleeveMaterial.price;
+          else if (group.단위 === '본') {
+            const pipeMaterialInfo = findMaterialByNameAndSpec(materialDB, group.공종명, pipeSize);
+            const stdLen = pipeMaterialInfo ? getDuctilePipeStandardLength(pipeMaterialInfo.관종분류 || "2종관", pipeSize) : null;
+            if (stdLen) sleeveCostPerBaseUnit = sleeveMaterial.price * stdLen;
+          }
+          if (sleeveCostPerBaseUnit > 0) {
+            itemMaterialCost += sleeveCostPerBaseUnit;
+            remarks += `PE슬리브(+${sleeveCostPerBaseUnit.toFixed(0)}); `;
+            calculationDetails.push({ type: '추가재료(PE슬리브)', amount_per_unit: sleeveCostPerBaseUnit });
           }
         }
-        
-        // 수량에 따른 금액 계산
-        const totalPrice = group.합계금액 * quantity;
-        const materialPrice = group.재료비금액 * quantity;
-        const laborPrice = group.노무비금액 * quantity;
-        const expensePrice = group.경비금액 * quantity;
-        
-        // 항목 추가
-        allDocumentItems.push({
-          공종명: group.공종명,
-          규격: group.규격,
-          수량: quantity,
-          단위: group.단위,
-          합계단가: group.합계금액,
-          합계금액: totalPrice,
-          재료비단가: group.재료비금액,
-          재료비금액: materialPrice,
-          노무비단가: group.노무비금액,
-          노무비금액: laborPrice,
-          경비단가: group.경비금액,
-          경비금액: expensePrice,
-          비고: '',
-          isSpecMatched: true
-        });
-        
-        // 금액 합산
-        totalAmount += totalPrice;
-        totalMaterialAmount += materialPrice;
-        totalLaborAmount += laborPrice;
-        totalExpenseAmount += expensePrice;
-      });
-    } else {
-      // 규격 추가된 경우: 각 일위대가 항목에 대해 한 번만 계산
-      groupData.forEach(group => {
-        // 이 항목과 매치되는 규격 찾기
-        const matchingSpec = specInfos.find(spec => 
-          matchSpecWithItem(group.규격, spec.name)
-        );
-        
-        let quantity = 0;
-        let isMatched = false;
-        
-        // 매칭되는 규격이 있는 경우
-        if (matchingSpec) {
-          isMatched = true;
-          
-          // 단위에 따른 수량 결정
-          if (group.단위 === 'm') {
-            quantity = matchingSpec.totalLength;
-          } else if (group.단위 === '개소') {
-            // 곡관 관련 공종인 경우
-            if (group.공종명.includes('곡관') || group.공종명.includes('굴곡') || group.공종명.includes('굽힘')) {
-              quantity = matchingSpec.bendCount;
-            } else {
-              quantity = matchingSpec.workHoles;
-            }
+      }
+
+      // KP 메커니컬 조인트 부속품 비용 추가 (볼트너트세트)
+      // group.단위가 '본' 또는 '개소' (접합부 당) 라고 가정
+      if (pipeSize > 0 && (group.공종명.includes('KP메커니컬') || group.공종명.includes('KP식')) && (group.단위 === '본' || group.단위 === '개소')) {
+        const jointPartsInfo = getKpMechanicalJointParts(pipeSize);
+        if (jointPartsInfo) {
+          // '볼트너트세트' 자재를 찾고, 규격(호칭지름)도 일치하는지 확인
+          const boltNutSetMaterial = findMaterialByNameAndSpec(materialDB, '볼트너트세트', pipeSize);
+          if (boltNutSetMaterial && boltNutSetMaterial.price) {
+            // jointPartsInfo.bolts가 해당 구경에 필요한 볼트(세트)의 수량이라고 가정
+            const numberOfSetsPerJoint = jointPartsInfo.bolts;
+            const boltNutSetCostPerJoint = boltNutSetMaterial.price * numberOfSetsPerJoint;
+
+            itemMaterialCost += boltNutSetCostPerJoint; // 단위 작업당 자재비에 추가
+            remarks += ` KP볼트너트세트(${numberOfSetsPerJoint}조, +${boltNutSetCostPerJoint.toFixed(0)}); `;
+            calculationDetails.push({
+              type: '추가재료(KP볼트너트)',
+              description: `${numberOfSetsPerJoint}조 * ${boltNutSetMaterial.price}원/조`,
+              amount_per_unit: boltNutSetCostPerJoint
+            });
           } else {
-            quantity = 1; // 기본값
+            remarks += ` KP볼트너트세트 정보없음; `;
+          }
+          // 고무링도 같은 방식으로 추가 가능
+          const rubberRingMaterial = findMaterialByNameAndSpec(materialDB, '고무링', pipeSize);
+          if (rubberRingMaterial && rubberRingMaterial.price) {
+            const rubberRingCostPerJoint = rubberRingMaterial.price * jointPartsInfo.rubberRing; // 보통 1개
+            itemMaterialCost += rubberRingCostPerJoint;
+            remarks += ` 고무링(${jointPartsInfo.rubberRing}개, +${rubberRingCostPerJoint.toFixed(0)}); `;
+            calculationDetails.push({
+              type: '추가재료(고무링)',
+              description: `${jointPartsInfo.rubberRing}개 * ${rubberRingMaterial.price}원/개`,
+              amount_per_unit: rubberRingCostPerJoint
+            });
+          } else {
+            remarks += ` 고무링 정보없음; `;
           }
         }
-        
-        // 수량에 따른 금액 계산
-        const totalPrice = group.합계금액 * quantity;
-        const materialPrice = group.재료비금액 * quantity;
-        const laborPrice = group.노무비금액 * quantity;
-        const expensePrice = group.경비금액 * quantity;
-        
-        // 항목 추가
-        allDocumentItems.push({
-          공종명: group.공종명,
-          규격: group.규격,
-          수량: quantity,
-          단위: group.단위,
-          합계단가: group.합계금액,
-          합계금액: totalPrice,
-          재료비단가: group.재료비금액,
-          재료비금액: materialPrice,
-          노무비단가: group.노무비금액,
-          노무비금액: laborPrice,
-          경비단가: group.경비금액,
-          경비금액: expensePrice,
-          비고: isMatched ? '' : '규격 불일치',
-          isSpecMatched: isMatched
-        });
-        
-        // 금액 합산 (매칭된 경우만)
-        if (isMatched) {
-          totalAmount += totalPrice;
-          totalMaterialAmount += materialPrice;
-          totalLaborAmount += laborPrice;
-          totalExpenseAmount += expensePrice;
-        }
-      });
-    }
+      }
 
-    // 프로젝트 정보를 내역서 첫 행에 추가
-    const projectRow: DocumentItem = {
-      공종명: projectDetails.projectName,
-      규격: '',
-      수량: 1,
-      단위: '식',
-      합계단가: 0,
-      합계금액: totalAmount,
-      재료비단가: 0,
-      재료비금액: totalMaterialAmount,
-      노무비단가: 0,
-      노무비금액: totalLaborAmount,
-      경비단가: 0,
-      경비금액: totalExpenseAmount,
-      비고: ''
+      const finalMaterialAmount = itemMaterialCost * quantity;
+      const finalLaborAmount = itemLaborCost * quantity;
+      const finalExpenseAmount = itemExpenseCost * quantity;
+      const finalTotalAmount = finalMaterialAmount + finalLaborAmount + finalExpenseAmount;
+
+      runningTotalMaterial += finalMaterialAmount;
+      runningTotalLabor += finalLaborAmount;
+      runningTotalExpense += finalExpenseAmount;
+
+      allDocumentItems.push({
+        공종명: group.공종명, 규격: group.규격, 수량: quantity, 단위: group.단위,
+        재료비단가: itemMaterialCost, 재료비금액: finalMaterialAmount,
+        노무비단가: itemLaborCost, 노무비금액: finalLaborAmount,
+        경비단가: itemExpenseCost, 경비금액: finalExpenseAmount,
+        합계단가: itemMaterialCost + itemLaborCost + itemExpenseCost, 합계금액: finalTotalAmount,
+        비고: remarks.trim(), 품셈코드: group.품셈코드, calculationDetails,
+        isSpecMatched: currentSpecInfo ? matchSpecWithItem(group.규격, currentSpecInfo.name) : true,
+      });
     };
 
-    // 내역서에 모든 항목 추가 (프로젝트 행 + 그룹 항목들)
-    const newItems = [projectRow, ...allDocumentItems];
-    
-    // 내역서 항목 업데이트
-    setDocumentItems(newItems);
-    setError(''); // 오류 메시지 초기화
-    
-    // 내역서 데이터 저장
-    try {
-      sessionStore.saveDocumentItems(newItems);
-      console.log('내역서 데이터를 sessionStorage에 저장했습니다:', newItems.length);
-    } catch (err) {
-      console.error('내역서 데이터 저장 중 오류:', err);
+    if (!hasSpecs) {
+      groupData.forEach(group => processGroup(group));
+    } else {
+      groupData.forEach(group => {
+        const matchingSpec = specInfos.find(spec => matchSpecWithItem(group.규격, spec.name));
+        if (matchingSpec) {
+          processGroup(group, matchingSpec);
+        } else { // 규격 불일치 시 수량 0으로 처리하고 기본 항목 추가
+          allDocumentItems.push({
+            공종명: group.공종명, 규격: group.규격, 수량: 0, 단위: group.단위,
+            재료비단가: group.재료비금액, 재료비금액: 0, 노무비단가: group.노무비금액, 노무비금액: 0,
+            경비단가: group.경비금액, 경비금액: 0, 합계단가: group.합계금액, 합계금액: 0,
+            비고: '규격 불일치', 품셈코드: group.품셈코드, calculationDetails: [], isSpecMatched: false,
+          });
+        }
+      });
     }
+
+    // 간접비 계산 (표준 방식 적용)
+    const directCostTotal = runningTotalMaterial + runningTotalLabor + runningTotalExpense;
+    const generalManagementAmount = directCostTotal * indirectCostRates.generalManagement;
+    const profitBase = directCostTotal + generalManagementAmount;
+    const profitAmount = profitBase * indirectCostRates.profit;
+    const finalTotalAmountWithIndirects = profitBase + profitAmount;
+
+    // 간접비를 노무비와 경비에 분배하거나, 총액에만 반영하거나 선택 가능.
+    // 여기서는 총액에 반영하고, projectRow의 노무비/경비는 직접비만 표시.
+    // 또는, 간접노무비/간접경비 항목을 projectRow.calculationDetails에 명시.
+
+    const projectRow: DocumentItem = {
+      공종명: projectDetails.projectName, 규격: '', 수량: 1, 단위: '식',
+      재료비금액: runningTotalMaterial,
+      노무비금액: runningTotalLabor, // 직접 노무비만 표시
+      경비금액: runningTotalExpense,   // 직접 경비만 표시
+      합계금액: finalTotalAmountWithIndirects, // 간접비 포함 총액
+      재료비단가: 0, 노무비단가: 0, 경비단가: 0, 합계단가: 0,
+      비고: `일반관리비(${indirectCostRates.generalManagement*100}%), 이윤(${indirectCostRates.profit*100}%) 포함 총액`,
+      calculationDetails: [
+        {type: "총 직접재료비", amount: runningTotalMaterial},
+        {type: "총 직접노무비", amount: runningTotalLabor},
+        {type: "총 직접경비", amount: runningTotalExpense},
+        {type: "소계 (직접공사비)", amount: directCostTotal },
+        {type: "일반관리비", amount: generalManagementAmount, rate: indirectCostRates.generalManagement, base: directCostTotal},
+        {type: "이윤", amount: profitAmount, rate: indirectCostRates.profit, base: profitBase},
+        {type: "총 공사금액 (간접비 포함)", amount: finalTotalAmountWithIndirects}
+      ]
+    };
+
+    const newItems = [projectRow, ...allDocumentItems.filter(item => item.수량 > 0 || !item.isSpecMatched)];
+    setDocumentItems(newItems);
+    setError('');
+    sessionStore.saveDocumentItems(newItems);
   };
 
   // 숫자 포맷팅 함수
@@ -462,111 +618,85 @@ export default function PriceDocumentGenerator() {
       const wb = XLSX.utils.book_new();
       
       // 1. 내역서 시트 생성
-      // 프로젝트명 행 처리
-      const projectNameRow = documentItems[0];
-      const projectRowData = {
-        'NO': '',
-        '공종명': projectNameRow.공종명,
-        '규격': '',
-        '수량': '',
-        '단위': '',
-        '합계단가': '',
-        '합계금액': projectNameRow.합계금액,
-        '재료비단가': '',
-        '재료비금액': projectNameRow.재료비금액,
-        '노무비단가': '',
-        '노무비금액': projectNameRow.노무비금액,
-        '경비단가': '',
-        '경비금액': projectNameRow.경비금액,
-        '비고': ''
-      };
+      const estimateSheetData = documentItems.map((item, idx) => {
+        if (idx === 0) { // 프로젝트명 행
+          return {
+            'NO': '', '공종명': item.공종명, '규격': '', '수량': '', '단위': '',
+            '합계단가': '', '합계금액': formatNumberForExcel(item.합계금액),
+            '재료비단가': '', '재료비금액': formatNumberForExcel(item.재료비금액),
+            '노무비단가': '', '노무비금액': formatNumberForExcel(item.노무비금액),
+            '경비단가': '', '경비금액': formatNumberForExcel(item.경비금액),
+            '비고': item.비고 || ''
+          };
+        }
+        return { // 일반 항목
+          'NO': (idx).toString(), '공종명': item.공종명, '규격': item.규격,
+          '수량': item.수량, '단위': item.단위,
+          '합계단가': formatNumberForExcel(item.합계단가), '합계금액': formatNumberForExcel(item.합계금액),
+          '재료비단가': formatNumberForExcel(item.재료비단가), '재료비금액': formatNumberForExcel(item.재료비금액),
+          '노무비단가': formatNumberForExcel(item.노무비단가), '노무비금액': formatNumberForExcel(item.노무비금액),
+          '경비단가': formatNumberForExcel(item.경비단가), '경비금액': formatNumberForExcel(item.경비금액),
+          '비고': item.비고 || '' // 품셈코드, 할증 등 여기에 포함
+        };
+      });
       
-      // 일반 항목 처리 (1부터 시작하는 번호 부여)
-      const itemRowsData = documentItems.slice(1).map((item, idx) => ({
-        'NO': (idx + 1).toString(),
-        '공종명': item.공종명,
-        '규격': item.규격,
-        '수량': item.수량,
-        '단위': item.단위,
-        '합계단가': item.합계단가,
-        '합계금액': item.합계금액,
-        '재료비단가': item.재료비단가,
-        '재료비금액': item.재료비금액,
-        '노무비단가': item.노무비단가,
-        '노무비금액': item.노무비금액,
-        '경비단가': item.경비단가,
-        '경비금액': item.경비금액,
-        '비고': item.비고 || ''
-      }));
-      
-      // 모든 행 데이터 합치기
-      const documentData = [projectRowData, ...itemRowsData];
-      
-      // 워크시트 생성
-      const documentWS = XLSX.utils.json_to_sheet(documentData);
-      
-      // 숫자 셀에 통화 형식 스타일 적용
-      applyCurrencyFormat(documentWS);
-      
-      // 열 너비 설정
-      const documentColWidths = [
-        { wch: 5 }, // NO
-        { wch: 25 }, // 공종명
-        { wch: 15 }, // 규격
-        { wch: 8 }, // 수량
-        { wch: 8 }, // 단위
-        { wch: 12 }, // 합계단가
-        { wch: 12 }, // 합계금액
-        { wch: 12 }, // 재료비단가
-        { wch: 12 }, // 재료비금액
-        { wch: 12 }, // 노무비단가
-        { wch: 12 }, // 노무비금액
-        { wch: 12 }, // 경비단가
-        { wch: 12 }, // 경비금액
-        { wch: 15 } // 비고
+      const estimateWS = XLSX.utils.json_to_sheet(estimateSheetData);
+      applyCurrencyFormat(estimateWS);
+      const estimateColWidths = [
+        { wch: 5 }, { wch: 30 }, { wch: 15 }, { wch: 8 }, { wch: 8 }, // NO, 공종명, 규격, 수량, 단위
+        { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, // 합계 (단가, 금액), 재료비 (단가, 금액)
+        { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, // 노무비 (단가, 금액), 경비 (단가, 금액)
+        { wch: 30 } // 비고
       ];
-      documentWS['!cols'] = documentColWidths;
-      
-      // 테두리 정보 설정 (내역서)
-      applyBordersToSheet(documentWS, documentItems.length + 1);
-      
-      // 내역서 시트 추가
-      XLSX.utils.book_append_sheet(wb, documentWS, '내역서');
-      
-      // 2. 일위대가목록 시트 생성
-      const unitPriceListData = groupData.map(group => ({
-        '공종명': group.공종명,
-        '규격': group.규격,
-        '단위': group.단위,
-        '재료비금액': group.재료비금액,
-        '노무비금액': group.노무비금액,
-        '경비금액': group.경비금액,
-        '합계금액': group.합계금액
+      estimateWS['!cols'] = estimateColWidths;
+      applyBordersToSheet(estimateWS, estimateSheetData.length + 1);
+      XLSX.utils.book_append_sheet(wb, estimateWS, '내역서');
+
+      // 2. 산출근거 시트 생성
+      const calculationBasisSheetData: any[] = [];
+      documentItems.forEach((item, idx) => {
+        if (idx === 0) { // 프로젝트 총계에 대한 산출근거
+          calculationBasisSheetData.push({ 항목: item.공종명, 구분: "총계 요약", 내용: `총 재료비: ${formatNumberForExcel(item.재료비금액)}, 총 노무비: ${formatNumberForExcel(item.노무비금액)}, 총 경비: ${formatNumberForExcel(item.경비금액)}`});
+          item.calculationDetails?.forEach(detail => {
+            calculationBasisSheetData.push({ 항목: "", 구분: detail.type, 내용: `금액: ${formatNumberForExcel(detail.amount)}, 기준액: ${formatNumberForExcel(detail.base)}, 요율:${detail.rate ? (detail.rate*100).toFixed(1)+'%' : '-'}` });
+          });
+          calculationBasisSheetData.push({}); // Blank row
+          return;
+        }
+        calculationBasisSheetData.push({ 항목: `${idx}. ${item.공종명} (${item.규격})`, 구분: "수량", 내용: `${item.수량} ${item.단위}` });
+        if(item.품셈코드) calculationBasisSheetData.push({ 항목: "", 구분: "적용품셈", 내용: item.품셈코드 });
+
+        item.calculationDetails?.forEach(detail => {
+          let content = `유형: ${detail.type}`;
+          if(detail.description) content += `, 설명: ${detail.description}`;
+          if(detail.amount_per_unit) content += `, 단위당 금액: ${formatNumberForExcel(detail.amount_per_unit)}`;
+          if(detail.rate) content += `, 요율: ${(detail.rate*100).toFixed(1)}% (변경전: ${formatNumberForExcel(detail.from)}, 변경후: ${formatNumberForExcel(detail.to)})`;
+          calculationBasisSheetData.push({ 항목: "", 구분: "세부 산출", 내용: content });
+        });
+         calculationBasisSheetData.push({ 항목: "", 구분: "최종 비고", 내용: item.비고 });
+         calculationBasisSheetData.push({}); // Blank row
+      });
+      const calcBasisWS = XLSX.utils.json_to_sheet(calculationBasisSheetData);
+      calcBasisWS['!cols'] = [{wch: 40}, {wch: 20}, {wch: 80}];
+      XLSX.utils.book_append_sheet(wb, calcBasisWS, '산출근거');
+
+      // 3. 일위대가목록 시트 생성 (기존 로직 유지 또는 개선)
+      const unitPriceListData = groupData.map(g => ({
+        '공종명': g.공종명, '규격': g.규격, '단위': g.단위,
+        '재료비': formatNumberForExcel(g.재료비금액), // groupData의 금액은 단가임
+        '노무비': formatNumberForExcel(g.노무비금액),
+        '경비': formatNumberForExcel(g.경비금액),
+        '합계': formatNumberForExcel(g.합계금액),
+        '품셈코드': g.품셈코드 || ''
       }));
-      
       const unitPriceListWS = XLSX.utils.json_to_sheet(unitPriceListData);
-      
-      // 숫자 셀에 통화 형식 스타일 적용
       applyCurrencyFormat(unitPriceListWS);
-      
-      // 일위대가목록 열 너비 설정
-      const unitPriceListColWidths = [
-        { wch: 30 }, // 공종명
-        { wch: 20 }, // 규격
-        { wch: 8 }, // 단위
-        { wch: 15 }, // 재료비금액
-        { wch: 15 }, // 노무비금액
-        { wch: 15 }, // 경비금액
-        { wch: 15 } // 합계금액
-      ];
+      const unitPriceListColWidths = [ { wch: 30 }, { wch: 20 }, { wch: 8 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, {wch: 20}];
       unitPriceListWS['!cols'] = unitPriceListColWidths;
+      applyBordersToSheet(unitPriceListWS, unitPriceListData.length + 1);
+      XLSX.utils.book_append_sheet(wb, unitPriceListWS, '일위대가목록(단가)');
       
-      // 테두리 정보 설정 (일위대가목록)
-      applyBordersToSheet(unitPriceListWS, groupData.length + 1);
-      
-      XLSX.utils.book_append_sheet(wb, unitPriceListWS, '일위대가목록');
-      
-      // 3. localStorage에서 일위대가_호표 데이터 가져와 시트 생성 
+      // 4. localStorage에서 일위대가_호표 데이터 가져와 시트 생성
       console.log('일위대가_호표 데이터 가져오기 시도');
       const unitPriceSheetData = sessionStore.getDataUnitpriceSheet();
       
