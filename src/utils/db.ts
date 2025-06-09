@@ -10,6 +10,8 @@ export interface MachineryData {
   unit?: string;
   price: number;
   createdAt?: Date;
+  표준품셈장비명?: string;
+  시간당표준단가?: number;
   // 원본 엑셀 데이터를 보존하기 위한 필드 추가
   originalData?: any;
 }
@@ -25,6 +27,8 @@ export interface MachineBaseData {
   lubricantCost?: number;
   hourlyRate?: number;
   createdAt?: Date;
+  표준품셈장비명?: string;
+  시간당표준단가?: number;
   // 원본 엑셀 데이터를 보존하기 위한 필드 추가
   originalData?: any;
 }
@@ -39,6 +43,13 @@ export interface MaterialData {
   unit?: string;
   price: number;
   createdAt?: Date;
+  관종분류: string;
+  품명: string;
+  세부종류: string;
+  내면처리: string;
+  호칭지름: string;
+  단위중량_kg_per_m?: number;
+  표준길이_m_per_본?: number;
   // 원본 엑셀 데이터를 보존하기 위한 필드 추가
   originalData?: any;
 }
@@ -52,6 +63,7 @@ export interface LaborData {
   workType?: string;
   wage: number;
   createdAt?: Date;
+  표준품셈직종?: string;
   // 원본 엑셀 데이터를 보존하기 위한 필드 추가
   originalData?: any;
 }
@@ -329,6 +341,9 @@ class LocalStorageDatabase {
           name,
           spec,
           price,
+          // 새로운 필드 추가 (엑셀 원본 또는 기본값)
+          표준품셈장비명: item['표준품셈장비명'] || '', // 엑셀에 해당 컬럼명이 있다고 가정
+          시간당표준단가: typeof item['시간당표준단가'] === 'number' ? item['시간당표준단가'] : parseFloat(String(item['시간당표준단가']).replace(/,/g, '')) || undefined, // 엑셀에 해당 컬럼명이 있다고 가정
           // 원본 데이터 전체를 보존
           originalData: {...item}
         };
@@ -359,6 +374,9 @@ class LocalStorageDatabase {
           name,
           spec,
           hourlyRate,
+          // 새로운 필드 추가 (엑셀 원본 또는 기본값)
+          표준품셈장비명: item['표준품셈장비명'] || '', // 엑셀에 해당 컬럼명이 있다고 가정
+          시간당표준단가: typeof item['시간당표준단가'] === 'number' ? item['시간당표준단가'] : parseFloat(String(item['시간당표준단가']).replace(/,/g, '')) || undefined, // 엑셀에 해당 컬럼명이 있다고 가정
           // 원본 데이터 전체를 보존
           originalData: {...item}
         };
@@ -393,6 +411,14 @@ class LocalStorageDatabase {
           spec,
           unit,
           price,
+          // 새로운 필드 추가 (엑셀 원본 또는 기본값)
+          관종분류: item['관종분류'] || '',
+          품명: item['품명 (KS)'] || item['품명'] || '', // "품명 (KS)" 우선 사용
+          세부종류: item['세부종류'] || '',
+          내면처리: item['내면처리'] || '',
+          호칭지름: item['호칭지름'] || '',
+          단위중량_kg_per_m: typeof item['단위중량_kg_per_m'] === 'number' ? item['단위중량_kg_per_m'] : parseFloat(String(item['단위중량_kg_per_m']).replace(/,/g, '')) || undefined,
+          표준길이_m_per_본: typeof item['표준길이_m_per_본'] === 'number' ? item['표준길이_m_per_본'] : parseFloat(String(item['표준길이_m_per_본']).replace(/,/g, '')) || undefined,
           // 원본 데이터 전체를 보존
           originalData: {...item}
         };
@@ -423,6 +449,8 @@ class LocalStorageDatabase {
           jobTitle,
           workType,
           wage,
+          // 새로운 필드 추가 (엑셀 원본 또는 기본값)
+          표준품셈직종: item['표준품셈직종'] || '', // 엑셀에 해당 컬럼명이 있다고 가정
           // 원본 데이터 전체를 보존
           originalData: {...item}
         };

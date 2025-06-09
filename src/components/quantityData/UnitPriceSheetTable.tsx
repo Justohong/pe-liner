@@ -3,8 +3,11 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { normalizeText } from '@/components/DocumentGenerator/MachineryUsageTable'; // 정규화 함수 임포트
-import { db } from '@/utils/db';
+import { db } from '@/utils/db'; // db는 직접 사용하지 않지만, 타입 정의를 위해 유지 가능
 import { sessionStore } from '@/utils/sessionStore';
+import { getStandardInputs, standardCostData } from '@/lib/standardCostData';
+import { getDuctilePipeWeight, getKpMechanicalJointParts } from '@/lib/ductileIronHandbookUtils';
+import type { LaborData, MaterialData, MachineryData } from '@/utils/db'; // 실제 데이터 타입 임포트
 
 interface UnitPriceSheetTableProps {
   data: any;
@@ -41,9 +44,9 @@ export interface GroupData {
 
 export default function UnitPriceSheetTable({ data, onGroupsUpdated }: UnitPriceSheetTableProps) {
   // DB 데이터 상태 추가
-  const [노임데이터, set노임데이터] = useState<any[]>([]);
-  const [자재데이터, set자재데이터] = useState<any[]>([]);
-  const [중기사용목록, set중기사용목록] = useState<any[]>([]);
+  const [노임데이터, set노임데이터] = useState<LaborData[]>([]);
+  const [자재데이터, set자재데이터] = useState<MaterialData[]>([]);
+  const [중기사용목록, set중기사용목록] = useState<MachineryData[]>([]);
   const [계산된데이터, set계산된데이터] = useState<Map<string, any>>(new Map());
   const [그룹별노무비합계, set그룹별노무비합계] = useState<{[key: string]: number}>({});
   // 그룹별 합계 데이터 추가
@@ -60,31 +63,17 @@ export default function UnitPriceSheetTable({ data, onGroupsUpdated }: UnitPrice
     const loadDbData = () => {
       try {
         // 노임 데이터 로드
-        const 노임데이터JSON = localStorage.getItem('pe-liner-labor-data');
-        if (노임데이터JSON) {
-          const 노임 = JSON.parse(노임데이터JSON);
-          set노임데이터(노임);
-        }
+        const dbInstance = db; // LocalStorageDatabase.getInstance();
+        set노임데이터(dbInstance.getLaborData());
+        set자재데이터(dbInstance.getMaterialData());
+        set중기사용목록(dbInstance.getMachineryData()); // db.ts의 중기 데이터 사용
         
-        // 자재 데이터 로드
-        const 자재데이터JSON = localStorage.getItem('pe-liner-material-data');
-        if (자재데이터JSON) {
-          const 자재 = JSON.parse(자재데이터JSON);
-          set자재데이터(자재);
-        }
-        
-        // 중기사용목록 데이터 로드 시도 (localStorage에서)
-        const 중기데이터JSON = localStorage.getItem('pe-liner-machinery-data');
-        if (중기데이터JSON) {
-          const 중기 = JSON.parse(중기데이터JSON);
-          set중기사용목록(중기);
-        }
-        
-        // 메모리에 저장된 중기사용목록 데이터 확인 (window 객체 활용)
+        // 메모리에 저장된 중기사용목록 데이터 확인 (window 객체 활용) - 이 부분은 기존 로직 유지 또는 통합 검토
         if (typeof window !== 'undefined' && (window as any).machineryItems) {
-          const 메모리중기데이터 = (window as any).machineryItems;
+          const 메모리중기데이터: MachineryData[] = (window as any).machineryItems;
           console.log('메모리에서 중기사용목록 데이터 로드:', 메모리중기데이터.length);
-          set메모리중기사용목록(메모리중기데이터);
+          // 필요시 기존 중기사용목록과 병합 또는 대체
+          // set메모리중기사용목록(메모리중기데이터); // 이 상태는 MachineryData[] 타입이어야 함
         }
       } catch (error) {
         console.error('DB 데이터 로드 중 오류:', error);
@@ -142,19 +131,18 @@ export default function UnitPriceSheetTable({ data, onGroupsUpdated }: UnitPrice
       const keys = Object.keys(row);
       
       // 각 셀 데이터 추출
-      const 공종명 = row[keys[0]] || '';
-      const 규격 = row[keys[1]] || '';
-      const 수량 = parseFloat(row[keys[2]]) || 0;
-      const 단위 = row[keys[3]] || '';
+      const original공종명 = row[keys[0]] || '';
+      const original규격 = row[keys[1]] || '';
+      const 수량 = parseFloat(String(row[keys[2]]).replace(/,/g, '')) || 0; // 수량 숫자형 변환
+      const original단위 = row[keys[3]] || '';
       
       // No로 시작하는 그룹 확인
-      if (공종명.startsWith('No.')) {
-        currentGroup = 공종명.trim();
-        currentGroupSpec = 규격.trim();
-        currentGroupUnit = 단위.trim();
+      if (original공종명.startsWith('No.')) {
+        currentGroup = original공종명.trim();
+        currentGroupSpec = original규격.trim(); // 그룹의 대표 규격
+        currentGroupUnit = original단위.trim(); // 그룹의 대표 단위
         그룹별노무비[currentGroup] = 0; // 해당 그룹의 노무비 초기화
         
-        // 새 그룹에 대한 합계 초기화
         currentGroupTotals[currentGroup] = {
           공종명: currentGroup,
           합계금액: 0,
@@ -165,12 +153,11 @@ export default function UnitPriceSheetTable({ data, onGroupsUpdated }: UnitPrice
         };
       }
       
-      // 계산 결과 담을 객체
       const calculatedRow = {
-        공종명,
-        규격,
-        수량,
-        단위,
+        공종명: original공종명,
+        규격: original규격,
+        수량: 수량,
+        단위: original단위,
         합계단가: 0,
         합계금액: 0,
         재료비단가: 0,
@@ -179,230 +166,289 @@ export default function UnitPriceSheetTable({ data, onGroupsUpdated }: UnitPrice
         노무비금액: 0,
         경비단가: 0,
         경비금액: 0,
+        품셈코드: '', // 적용된 표준품셈 코드 또는 계산 근거
+        calculationBasis: '기존 로직', // 계산 방식 추적
       };
-      
-      // 공구손료는 경비 구분항목으로 분류
-      if (공종명.trim().includes('공구손료')) {
-        const 인건비비율 = getPercentFromSpec(규격);
-        if (인건비비율 > 0 && currentGroup && 그룹별노무비[currentGroup]) {
-          calculatedRow.경비단가 = 그룹별노무비[currentGroup] * 인건비비율;
-          calculatedRow.경비금액 = calculatedRow.경비단가 * 수량;
-        }
-      } 
-      // 잡재료비는 재료비 구분항목으로 분류
-      else if (공종명.trim().includes('잡재료비')) {
-        const 인건비비율 = getPercentFromSpec(규격);
-        if (인건비비율 > 0 && currentGroup && 그룹별노무비[currentGroup]) {
-          calculatedRow.재료비단가 = 그룹별노무비[currentGroup] * 인건비비율;
-          calculatedRow.재료비금액 = calculatedRow.재료비단가 * 수량;
-        }
+
+      // 표준품셈 적용 시도
+      // TODO: currentGroup (예: "No.1 덕타일주철관 부설")과 original공종명 (예: "타이튼관")을 조합하여
+      // standardCostData의 공종대분류, 공종중분류를 결정하는 로직 필요.
+      // 예시: const { 대분류, 중분류 } = mapToStandardCostKeys(currentGroup, original공종명);
+      let mappedMajorWork = '';
+      let mappedMinorWork = '';
+
+      // 임시 매핑 로직: currentGroup에서 대분류, original공종명에서 중분류 추론
+      if (currentGroup.includes('관') || currentGroup.includes('부설')) {
+        mappedMajorWork = '관부설접합'; // standardCostData의 키와 일치해야 함
+        if (original공종명.includes('타이튼')) mappedMinorWork = '주철관_타이튼접합부설';
+        else if (original공종명.includes('메커니컬') || original공종명.includes('KP')) mappedMinorWork = '주철관_KP메커니컬접합부설';
+        else if (original공종명.includes('절단') || original공종명.includes('관단')) mappedMinorWork = '주철관_관절단';
+        // 기타 original공종명에 따른 mappedMinorWork 추가
       }
-      // 일반 항목 처리
-      else {
-        // 노임 찾기
-        const 노무비계산 = 노임데이터.find(item => 
+      // 다른 currentGroup에 대한 대분류 매핑 추가
+
+      const standardInputs = mappedMajorWork && mappedMinorWork ? getStandardInputs(mappedMajorWork, mappedMinorWork, original규격.trim()) : null;
+
+      if (standardInputs) {
+        calculatedRow.calculationBasis = `표준품셈: ${mappedMajorWork}/${mappedMinorWork}/${original규격.trim()}`;
+        calculatedRow.품셈코드 = `${mappedMajorWork}_${mappedMinorWork}_${original규격.trim()}`;
+        let stdInputUnit = standardInputs['단위'] as string || ''; // 표준품셈 단위 (본, m, 개소 등)
+        let laborCostPerStdUnit = 0;
+        let machineryCostPerStdUnit = 0;
+        let materialCostPerStdUnit = 0;
+
+        for (const [key, value] of Object.entries(standardInputs)) {
+          if (key === '단위') continue;
+          const amount = value as number;
+
+          const laborItem = 노임데이터.find(l => l.jobTitle === key || l.표준품셈직종 === key);
+          if (laborItem && laborItem.wage) {
+            laborCostPerStdUnit += laborItem.wage * amount;
+          }
+
+          const machineryItem = 중기사용목록.find(m =>
+            m.name === key ||
+            (m.표준품셈장비명 && m.표준품셈장비명 === key) ||
+            (m.name && key.toLowerCase().includes(m.name.toLowerCase())) || // 대소문자 무시하고 부분 일치
+            (m.spec && key.toLowerCase().includes(m.spec.toLowerCase()))
+          );
+          if (machineryItem) {
+            const hourlyRate = machineryItem.시간당표준단가 || machineryItem.price;
+            if (hourlyRate) {
+              machineryCostPerStdUnit += hourlyRate * amount;
+            }
+          }
+        }
+
+        // 재료비 계산 (주요 자재: 관, 부속품)
+        const diameterMatch = original규격.match(/\d+/);
+        const diameter = diameterMatch ? parseInt(diameterMatch[0], 10) : 0;
+
+        // 관 자재 처리 (예: 덕타일주철관)
+        // original공종명 또는 currentGroup(No.1 덕타일주철관 부설 등)을 통해 관 자재인지 판단
+        // 여기서는 original공종명이 "덕타일주철관" 등을 포함하는 경우로 가정
+        if (diameter > 0 && (original공종명.includes('덕타일주철관') || original공종명.includes('주철관'))) {
+          const pipeMaterialInfo = 자재데이터.find(m =>
+            (m.name.includes(original공종명) || m.품명.includes(original공종명)) &&
+            m.spec.includes(String(diameter)) &&
+            m.호칭지름 === String(diameter) // 정확한 호칭지름 일치
+            // && m.관종분류 === '2종관' // 필요한 경우 관종분류까지 조건에 추가
+          );
+
+          if (pipeMaterialInfo && pipeMaterialInfo.price) {
+            const pipeWeightPerM = getDuctilePipeWeight(pipeMaterialInfo.관종분류 || '2종관', diameter); // DB의 관종분류 사용
+
+            if (stdInputUnit === '본') {
+              const lengthPerPiece = pipeMaterialInfo.표준길이_m_per_본 || 0;
+              if (lengthPerPiece > 0) {
+                if (pipeMaterialInfo.unit === 'kg' && pipeWeightPerM) {
+                  materialCostPerStdUnit += pipeWeightPerM * lengthPerPiece * pipeMaterialInfo.price;
+                } else if (pipeMaterialInfo.unit === 'm') {
+                  materialCostPerStdUnit += pipeMaterialInfo.price * lengthPerPiece;
+                } else if (pipeMaterialInfo.unit === '본') {
+                  materialCostPerStdUnit += pipeMaterialInfo.price;
+                }
+              }
+            } else if (stdInputUnit === 'm') { // 표준품셈 단위가 'm'인 경우
+                if (pipeMaterialInfo.unit === 'kg' && pipeWeightPerM) {
+                    materialCostPerStdUnit += pipeWeightPerM * pipeMaterialInfo.price;
+                } else if (pipeMaterialInfo.unit === 'm') {
+                    materialCostPerStdUnit += pipeMaterialInfo.price;
+                } else if (pipeMaterialInfo.unit === '본' && pipeMaterialInfo.표준길이_m_per_본 && pipeMaterialInfo.표준길이_m_per_본 > 0) {
+                    materialCostPerStdUnit += pipeMaterialInfo.price / pipeMaterialInfo.표준길이_m_per_본; // m당 단가로 환산
+                }
+            }
+          }
+        }
+
+        // KP 메커니컬 조인트 부속품 (standardInputs 단위가 '개소' 또는 '조'이고, 공종명이 KP메커니컬 관련일 때)
+        if (diameter > 0 && (mappedMinorWork === '주철관_KP메커니컬접합부설' || original공종명.includes('KP메커니컬')) && (stdInputUnit === '개소' || stdInputUnit === '조')) {
+          const jointParts = getKpMechanicalJointParts(diameter);
+          if (jointParts) {
+            const partsToFind = [
+              { namePart: '볼트', specDiameter: String(diameter), count: jointParts.bolts },
+              { namePart: '너트', specDiameter: String(diameter), count: jointParts.nuts },
+              { namePart: '고무링', specDiameter: String(diameter), count: jointParts.rubberRing }
+            ];
+            partsToFind.forEach(part => {
+              const partMaterialInfo = 자재데이터.find(m =>
+                m.품명.includes(part.namePart) &&
+                m.호칭지름 === part.specDiameter // 호칭지름으로 부속품 규격 매칭
+              );
+              if (partMaterialInfo && partMaterialInfo.price) {
+                materialCostPerStdUnit += partMaterialInfo.price * part.count;
+              }
+            });
+          }
+        }
+
+        calculatedRow.재료비단가 = materialCostPerStdUnit; // 표준 단위당 재료비
+        calculatedRow.노무비단가 = laborCostPerStdUnit;   // 표준 단위당 노무비
+        calculatedRow.경비단가 = machineryCostPerStdUnit; // 표준 단위당 경비
+
+        // 단위 변환 및 최종 금액 계산
+        let conversionFactor = 1;
+        const mainMaterialForUnitConversion = 자재데이터.find(m =>
+            (m.name.includes(original공종명) || 품명포함(m.품명, original공종명)) &&
+            m.spec.includes(original규격) &&
+            m.표준길이_m_per_본 && m.표준길이_m_per_본 > 0
+        );
+
+        if (stdInputUnit === '본' && original단위 === 'm' && mainMaterialForUnitConversion && mainMaterialForUnitConversion.표준길이_m_per_본) {
+            conversionFactor = 1 / mainMaterialForUnitConversion.표준길이_m_per_본; // m당 단가로 변환하기 위해 표준 길이로 나눔
+        } else if (stdInputUnit === 'm' && original단위 === '본' && mainMaterialForUnitConversion && mainMaterialForUnitConversion.표준길이_m_per_본) {
+            conversionFactor = mainMaterialForUnitConversion.표준길이_m_per_본; // 본당 단가로 변환하기 위해 표준 길이로 곱함
+        }
+        // 기타 단위 변환 로직 추가 가능 (예: kg <-> m, kg <-> 본)
+
+        calculatedRow.재료비단가 *= conversionFactor;
+        calculatedRow.노무비단가 *= conversionFactor;
+        calculatedRow.경비단가 *= conversionFactor;
+
+        calculatedRow.재료비금액 = calculatedRow.재료비단가 * 수량;
+        calculatedRow.노무비금액 = calculatedRow.노무비단가 * 수량;
+        calculatedRow.경비금액 = calculatedRow.경비단가 * 수량;
+
+        if (currentGroup) {
+          그룹별노무비[currentGroup] += calculatedRow.노무비금액;
+        }
+
+      } else { // 표준품셈을 찾지 못한 경우 기존 로직 사용
+        calculatedRow.calculationBasis = '기존 로직';
+        // 기존 노임 찾기
+        // 기존 노임 찾기 (standardInputs 적용 안된 경우)
+        const laborMatchExisting = 노임데이터.find(item =>
           item.jobTitle && (
-            item.jobTitle.includes(공종명.trim()) || 
-            공종명.trim().includes(item.jobTitle)
+            item.jobTitle.includes(original공종명.trim()) ||
+            original공종명.trim().includes(item.jobTitle)
           )
         );
-        
-        if (노무비계산) {
-          calculatedRow.노무비단가 = 노무비계산.wage || 0;
-          calculatedRow.노무비금액 = calculatedRow.노무비단가 * 수량;
-          
-          // 현재 그룹의 노무비 합계 누적
-          if (currentGroup) {
-            그룹별노무비[currentGroup] += calculatedRow.노무비금액;
-          }
+        if (laborMatchExisting) {
+          calculatedRow.노무비단가 = laborMatchExisting.wage || 0;
         }
         
-        // 자재 찾기 - 공종명과 규격을 모두 고려
-        let 자재비계산 = null;
-        
-        // 1. 공종명과 규격이 모두 일치하는 자재 찾기 (정확한 매칭)
-        if (규격.trim() !== '') {
-          자재비계산 = 자재데이터.find(item => 
+        // 기존 자재 찾기 (standardInputs 적용 안된 경우)
+        let materialMatchExisting = null;
+        if (original규격.trim() !== '') {
+          materialMatchExisting = 자재데이터.find(item =>
             item.name && item.spec && (
-              (item.name.includes(공종명.trim()) || 공종명.trim().includes(item.name)) &&
-              (item.spec.includes(규격.trim()) || 규격.trim().includes(item.spec))
+              (item.name.includes(original공종명.trim()) || original공종명.trim().includes(item.name)) &&
+              (item.spec.includes(original규격.trim()) || original규격.trim().includes(item.spec))
             )
           );
-          
-          if (자재비계산) {
-            console.log(`자재 정확히 매칭됨 (공종+규격): ${자재비계산.name}, 규격: ${자재비계산.spec}, 단가: ${자재비계산.price}`);
-          }
         }
-        
-        // 2. 정확한 매칭이 없으면 공종명만으로 검색
-        if (!자재비계산) {
-          자재비계산 = 자재데이터.find(item => 
+        if (!materialMatchExisting) {
+          materialMatchExisting = 자재데이터.find(item =>
             item.name && (
-              item.name.includes(공종명.trim()) || 
-              공종명.trim().includes(item.name)
+              item.name.includes(original공종명.trim()) ||
+              original공종명.trim().includes(item.name)
             )
           );
-          
-          if (자재비계산) {
-            console.log(`자재 일부 매칭됨 (공종명만): ${자재비계산.name}, 단가: ${자재비계산.price}`);
-          }
         }
-        
-        if (자재비계산) {
-          calculatedRow.재료비단가 = 자재비계산.price || 0;
-          calculatedRow.재료비금액 = calculatedRow.재료비단가 * 수량;
+        if (materialMatchExisting) {
+          calculatedRow.재료비단가 = materialMatchExisting.price || 0;
         }
 
-        // 인건비 비율 계산 (규격이 '인건비의 X%' 형태인 경우)
-        if (규격.includes('인건비의') && 규격.includes('%')) {
-          try {
-            const 비율 = getPercentFromSpec(규격);
-            
-            // 현재 그룹의 노무비 합계에 비율 적용
-            if (비율 > 0 && currentGroup && 그룹별노무비[currentGroup]) {
-              calculatedRow.노무비단가 = 그룹별노무비[currentGroup] * 비율;
-              calculatedRow.노무비금액 = calculatedRow.노무비단가 * 수량;
-            }
-          } catch (e) {
-            console.error('인건비 비율 처리 오류:', e);
-          }
-        }
-        
-        // 중기사용목록에서 데이터 찾기 (다른 DB에서 찾지 못한 경우)
-        if (calculatedRow.재료비단가 === 0 && calculatedRow.노무비단가 === 0 && 수량 > 0) {
-          // 공종명 + 규격 조합으로 검색
-          const 중기명 = `${공종명} ${규격}`.trim();
-          
-          // 중기명 정규화
-          const 정규화된중기명 = normalizeText(중기명);
-          console.log('찾는 중기명:', 정규화된중기명);
-          
-          // 1. 먼저 sessionStore에서 중기사용료 데이터를 가져와서 계산
-          const machineryTableData = sessionStore.getMachineryTableData();
-          if (machineryTableData) {
-            // 중기사용료 그룹에서 일치하는 이름 찾기
-            const matchingGroup = Object.entries(machineryTableData).find(([groupName, items]) => {
-              const normalizedGroupName = normalizeText(groupName);
-              return normalizedGroupName === 정규화된중기명 || 
-                     normalizedGroupName.includes(정규화된중기명) || 
-                     정규화된중기명.includes(normalizedGroupName);
-            });
+        // 기존 중기사용목록 찾기 (standardInputs 적용 안됐고, 위에서 재료비,노무비 못찾은 경우)
+        if (calculatedRow.재료비단가 === 0 && calculatedRow.노무비단가 === 0) {
+            const 중기명 = `${original공종명} ${original규격}`.trim();
+            const 정규화된중기명 = normalizeText(중기명);
+            const machineryTableData = sessionStore.getMachineryTableData(); // MachineryUsageTable 결과
+            let foundInMachineryTable = false;
 
-            if (matchingGroup) {
-              const [groupName, items] = matchingGroup;
-              console.log('중기사용료 그룹 매칭됨:', groupName);
-              
-              // 해당 그룹의 총계 항목 찾기
-              const totalItem = (items as any[]).find((item: any) => item.구분 === '총계');
-              if (totalItem) {
-                // 재료비, 노무비, 경비 계산
-                const materialItems = (items as any[]).filter((item: any) => item.구분 === '재료비');
-                const laborItems = (items as any[]).filter((item: any) => item.구분 === '노무비');
-                const expenseItems = (items as any[]).filter((item: any) => item.구분 === '경비');
-                
-                // 각 항목의 금액 합산
-                const materialTotal = materialItems.reduce((sum: number, item: any) => sum + (parseFloat(item.금액) || 0), 0);
-                const laborTotal = laborItems.reduce((sum: number, item: any) => sum + (parseFloat(item.금액) || 0), 0);
-                const expenseTotal = expenseItems.reduce((sum: number, item: any) => sum + (parseFloat(item.금액) || 0), 0);
-                
-                // 단가 계산 (총 금액을 수량으로 나눔)
-                calculatedRow.재료비단가 = materialTotal;
-                calculatedRow.노무비단가 = laborTotal;
-                calculatedRow.경비단가 = expenseTotal;
-                
-                // 금액 계산 (단가 * 수량)
-                calculatedRow.재료비금액 = calculatedRow.재료비단가 * 수량;
-                calculatedRow.노무비금액 = calculatedRow.노무비단가 * 수량;
-                calculatedRow.경비금액 = calculatedRow.경비단가 * 수량;
-                
-                console.log('중기사용료 계산 결과:', {
-                  재료비: calculatedRow.재료비금액,
-                  노무비: calculatedRow.노무비금액,
-                  경비: calculatedRow.경비금액
+            if (machineryTableData) { // MachineryUsageTable 결과 우선 사용
+                const matchingGroup = Object.entries(machineryTableData).find(([groupName, items]) => {
+                    const normalizedGroupName = normalizeText(groupName);
+                    return normalizedGroupName === 정규화된중기명 || normalizedGroupName.includes(정규화된중기명) || 정규화된중기명.includes(normalizedGroupName);
                 });
-              }
+                if (matchingGroup) {
+                    const [, items] = matchingGroup;
+                    // MachineryUsageTable은 이미 계산된 재료비, 노무비, 경비 총액을 가지고 있음.
+                    // 이를 단가로 사용하려면 해당 항목의 수량이 1일 때의 값이어야 함.
+                    // 여기서는 해당 항목의 구성 비용으로 보고 단가에 직접 할당.
+                    calculatedRow.재료비단가 = (items as any[]).filter(i => i.구분 === '재료비').reduce((s, i) => s + (parseFloat(i.금액) || 0), 0);
+                    calculatedRow.노무비단가 = (items as any[]).filter(i => i.구분 === '노무비').reduce((s, i) => s + (parseFloat(i.금액) || 0), 0);
+                    calculatedRow.경비단가 = (items as any[]).filter(i => i.구분 === '경비').reduce((s, i) => s + (parseFloat(i.금액) || 0), 0);
+                    foundInMachineryTable = true;
+                    calculatedRow.calculationBasis = '기존 로직: 중기사용료(MachineryUsageTable)';
+                }
             }
-          }
-          
-          // 2. sessionStore에서 찾지 못한 경우 기존 메모리중기사용목록 검색 로직 사용
-          if (calculatedRow.재료비단가 === 0 && calculatedRow.노무비단가 === 0) {
-            // 메모리에 저장된 중기사용목록 데이터에서 먼저 찾기 (정규화된 이름으로 비교)
-            let 중기항목 = 메모리중기사용목록.find(item => {
-              if (!item.name) return false;
-              const itemName = normalizeText(item.name);
-              return itemName === 정규화된중기명 || 
-                     itemName.includes(정규화된중기명) || 
-                     정규화된중기명.includes(itemName);
-            });
-            
-            // 정확히 매칭되지 않는 경우 대체 검색 시도 (톤, ton 같은 단위 변환 등)
-            if (!중기항목) {
-              // 대체 키워드 (예: '10 ton' -> '10톤')
-              const 대체중기명 = 정규화된중기명
-                .replace(/\b(\d+)\s*ton\b/gi, '$1톤')
-                .replace(/\b(\d+)\s*톤\b/g, '$1 ton');
-                
-              console.log('대체 중기명으로 검색:', 대체중기명);
-              
-              중기항목 = 메모리중기사용목록.find(item => {
-                if (!item.name) return false;
-                const itemName = normalizeText(item.name);
-                return itemName.includes(대체중기명) || 대체중기명.includes(itemName);
-              });
+
+            if (!foundInMachineryTable) { // sessionStore에 없으면 DB의 중기 데이터 검색
+                const machineryDbItem = 중기사용목록.find(item => {
+                    if (!item.name) return false;
+                    const itemName = normalizeText(item.name);
+                    const itemSpec = item.spec ? normalizeText(item.spec) : '';
+                    const searchSpec = normalizeText(original규격);
+                    return (itemName === 정규화된중기명 || itemName.includes(정규화된중기명) || 정규화된중기명.includes(itemName)) ||
+                           (itemName.includes(normalizeText(original공종명)) && itemSpec.includes(searchSpec));
+                });
+                if (machineryDbItem) {
+                     // db.ts의 MachineryData price는 시간당 단가 또는 일위대가성 총액일 수 있음.
+                     // 여기서는 경비단가로 우선 처리. 기존 로직은 안분했었음.
+                    calculatedRow.경비단가 = machineryDbItem.price || 0;
+                    calculatedRow.calculationBasis = '기존 로직: 중기DB';
+                }
             }
-            
-            // 메모리에서 찾지 못한 경우 localStorage의 데이터에서 찾기
-            if (!중기항목 && 중기사용목록.length > 0) {
-              중기항목 = 중기사용목록.find(item => {
-                if (!item.name) return false;
-                const itemName = normalizeText(item.name);
-                return itemName === 정규화된중기명 || 
-                       itemName.includes(정규화된중기명) || 
-                       정규화된중기명.includes(itemName);
-              });
-            }
-            
-            if (중기항목) {
-              console.log('중기사용목록에서 매칭된 항목:', 중기항목);
-              // 메모리 중기사용목록에서 찾은 경우
-              if (중기항목.material !== undefined && 중기항목.labor !== undefined && 중기항목.expense !== undefined) {
-                calculatedRow.재료비단가 = 중기항목.material || 0;
-                calculatedRow.노무비단가 = 중기항목.labor || 0; 
-                calculatedRow.경비단가 = 중기항목.expense || 0;
-              } 
-              // localStorage 중기사용목록에서 찾은 경우
-              else if (중기항목.price) {
-                calculatedRow.재료비단가 = 중기항목.price * 0.4 || 0; // 가정: 전체 가격의 40%를 재료비로
-                calculatedRow.노무비단가 = 중기항목.price * 0.35 || 0; // 가정: 전체 가격의 35%를 노무비로
-                calculatedRow.경비단가 = 중기항목.price * 0.25 || 0;  // 가정: 전체 가격의 25%를 경비로
-              }
-              
-              calculatedRow.재료비금액 = calculatedRow.재료비단가 * 수량;
-              calculatedRow.노무비금액 = calculatedRow.노무비단가 * 수량;
-              calculatedRow.경비금액 = calculatedRow.경비단가 * 수량;
-            } else {
-              console.log('중기사용목록에서 매칭 항목을 찾지 못했습니다:', 정규화된중기명);
-            }
-          }
+        }
+
+        calculatedRow.재료비금액 = calculatedRow.재료비단가 * 수량;
+        calculatedRow.노무비금액 = calculatedRow.노무비단가 * 수량;
+        calculatedRow.경비금액 = calculatedRow.경비단가 * 수량;
+
+        if (currentGroup && calculatedRow.노무비금액 > 0 && !original공종명.startsWith('No.')) {
+             그룹별노무비[currentGroup] += calculatedRow.노무비금액;
         }
       }
+
+      // 공구손료 및 잡재료비 계산 (항상 수행, 표준품셈과 별개로 항목명이 일치할 때)
+      // 공구손료 및 잡재료비 계산 (항상 수행, 표준품셈과 별개로 항목명이 일치할 때)
+      // 이 로직은 standardInputs을 사용한 계산 결과에 덮어쓰거나 추가될 수 있으므로 주의.
+      // 혹은, standardInputs을 사용했다면 이 부분은 건너뛰도록 조정할 수도 있음.
+      if (original공종명.trim().includes('공구손료')) {
+        const basisBefore = calculatedRow.calculationBasis;
+        calculatedRow.calculationBasis = `${basisBefore}; 직접 계산: 공구손료`;
+        const percentFromSpec = getPercentFromSpec(original규격);
+        if (percentFromSpec > 0 && currentGroup && 그룹별노무비[currentGroup]) {
+          // 그룹별노무비[currentGroup]은 해당 그룹 내 이전 항목들에서 누적된 노무비 금액의 합.
+          // 공구손료 단가는 이 누적된 노무비 합계에 대한 비율.
+          calculatedRow.경비단가 = (그룹별노무비[currentGroup] || 0) * percentFromSpec;
+          // calculatedRow.경비금액 = calculatedRow.경비단가 * 수량; // 금액은 아래에서 일괄 계산
+        } else if (!standardInputs) { // 표준품셈 미적용 시, 기본 공구손료율 (예: 노무비의 3%)
+           // calculatedRow.경비단가 = (calculatedRow.노무비단가) * 0.03; // 개별 항목 노무비의 3%
+        }
+         calculatedRow.경비금액 = calculatedRow.경비단가 * 수량;
+
+
+      } else if (original공종명.trim().includes('잡재료비')) {
+        const basisBefore = calculatedRow.calculationBasis;
+        calculatedRow.calculationBasis = `${basisBefore}; 직접 계산: 잡재료비`;
+        const percentFromSpec = getPercentFromSpec(original규격);
+        if (percentFromSpec > 0 && currentGroup && 그룹별노무비[currentGroup]) {
+          calculatedRow.재료비단가 = (그룹별노무비[currentGroup] || 0) * percentFromSpec;
+          // calculatedRow.재료비금액 = calculatedRow.재료비단가 * 수량;
+        } else if (!standardInputs) { // 표준품셈 미적용 시, 기본 잡재료비율 (예: 노무비의 1% 또는 재료비의 1%)
+            // calculatedRow.재료비단가 = (calculatedRow.노무비단가) * 0.01;
+        }
+        calculatedRow.재료비금액 = calculatedRow.재료비단가 * 수량;
+      }
       
-      // 합계 계산
+      // 최종 합계 계산
       calculatedRow.합계단가 = calculatedRow.재료비단가 + calculatedRow.노무비단가 + calculatedRow.경비단가;
       calculatedRow.합계금액 = calculatedRow.재료비금액 + calculatedRow.노무비금액 + calculatedRow.경비금액;
       
-      // 현재 그룹의 합계 누적 (No로 시작하는 행은 제외)
-      if (currentGroup && !공종명.startsWith('No.')) {
+      // 그룹별 총계 누적
+      if (currentGroup && !original공종명.startsWith('No.')) {
         if (currentGroupTotals[currentGroup]) {
           currentGroupTotals[currentGroup].합계금액 += calculatedRow.합계금액;
           currentGroupTotals[currentGroup].재료비금액 += calculatedRow.재료비금액;
+          // 그룹별노무비[currentGroup]는 이미 위에서 누적되었으므로 여기서는 그룹 총계의 노무비만 누적
           currentGroupTotals[currentGroup].노무비금액 += calculatedRow.노무비금액;
           currentGroupTotals[currentGroup].경비금액 += calculatedRow.경비금액;
           currentGroupTotals[currentGroup].rows.push(index);
         }
       }
       
-      // 행 식별자로 맵에 저장 (인덱스 기반)
       newCalculatedData.set(`row_${index}`, calculatedRow);
     });
     
@@ -559,33 +605,32 @@ export default function UnitPriceSheetTable({ data, onGroupsUpdated }: UnitPrice
   );
 }
 
+// 품명에 특정 문자열이 포함되어 있는지 확인하는 헬퍼 함수
+function 품명포함(품명: string | undefined, searchString: string): boolean {
+  if (!품명) return false;
+  return 품명.includes(searchString);
+}
+
 // 헤더를 제외한 데이터 행 렌더링 (일위대가_호표 특화)
 function renderCustomizedTable(
   rowData: any[], 
-  calculatedData: Map<string, any>,
+  calculatedDataMap: Map<string, any>, // 이름 변경: calculatedData -> calculatedDataMap
   그룹별합계: {[key: string]: GroupTotal}
 ) {
   if (!rowData || rowData.length === 0) return null;
   
-  // 첫 번째 행은 헤더라서 스킵하고, 데이터 행만 렌더링
-  // rowData.slice(2)로 변경: 첫 번째와 두 번째 행이 헤더에 해당하므로 두 행을 제외
-  const dataRows = rowData.slice(2);
+  const dataRows = rowData.slice(2); // 첫 두 행 헤더 제외
   
   return dataRows.map((row, rowIndex) => {
-    // 각 열의 데이터 맵핑
-    // 원본 데이터 키를 가져오기
     const keys = Object.keys(row);
     
-    // 엑셀에서 가져온 공종명, 규격, 수량, 단위 데이터
-    let 공종명 = row[keys[0]] || '';  
-    let 규격 = row[keys[1]] || '';   
-    let 수량 = row[keys[2]] || '';   
-    let 단위 = row[keys[3]] || '';   
+    const 공종명 = row[keys[0]] || '';
+    const 규격 = row[keys[1]] || '';
+    const 수량 = row[keys[2]] || ''; // 표시용은 원본 문자열 유지 가능
+    const 단위 = row[keys[3]] || '';
     
-    // 계산된 데이터에서 현재 행에 해당하는 데이터 찾기
-    const calculatedRow = calculatedData.get(`row_${rowIndex}`);
+    const calculatedRow = calculatedDataMap.get(`row_${rowIndex}`); // Map에서 조회
     
-    // No로 시작하는 그룹헤더 행 확인
     const isGroupHeader = 공종명.startsWith('No.');
     
     // 디자인 개선: 그룹 헤더 스타일 강화
