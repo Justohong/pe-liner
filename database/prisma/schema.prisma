@@ -1,0 +1,63 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 중기사용료 테이블
+model Machinery {
+  id            String   @id @default(uuid())
+  code          String?  // 코드
+  classification String?  // 분류
+  name          String   // 장비명
+  spec          String?  // 규격
+  unit          String?  // 단위
+  price         Float    // 단가
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// 중기기초자료 테이블
+model MachineBase {
+  id           String   @id @default(uuid())
+  code         String?  // 코드
+  name         String   // 장비명
+  spec         String?  // 규격
+  fuelType     String?  // 연료종류
+  fuelCost     Float?   // 연료비
+  lubricantCost Float?  // 윤활유비
+  hourlyRate   Float?   // 시간당 금액
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// 자재데이터 테이블
+model Material {
+  id           String   @id @default(uuid())
+  code         String?  // 코드
+  classification String?  // 분류
+  name         String   // 자재명
+  spec         String?  // 규격
+  unit         String?  // 단위
+  price        Float    // 단가
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// 노임데이터 테이블
+model Labor {
+  id            String   @id @default(uuid())
+  code          String?  // 코드
+  classification String?  // 분류
+  jobTitle      String   // 직종
+  workType      String?  // 작업유형
+  wage          Float    // 임금
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+} 
