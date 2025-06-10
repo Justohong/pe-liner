@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // 환경 변수에서 데이터베이스 연결 정보를 가져옵니다.
+// 실제 프로덕션 환경에서는 .env 파일 또는 환경 변수를 통해 설정해야 합니다.
 let pool: Pool;
 
 // DATABASE_URL이 있으면 연결 문자열 사용, 없으면 개별 설정 사용
