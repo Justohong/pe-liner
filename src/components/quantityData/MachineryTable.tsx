@@ -421,7 +421,7 @@ export default function MachineryTable({ data }: MachineryTableProps) {
   }
   
   return (
-    <div className="space-y-8">
+    <div className="w-full space-y-8">
       <div className="flex justify-between items-center mb-4">
       <h2 className="text-xl font-semibold">중기사용료</h2>
         <div className="flex items-center space-x-2">
@@ -443,28 +443,30 @@ export default function MachineryTable({ data }: MachineryTableProps) {
       
       {Object.entries(groupedData).length > 0 ? (
         Object.entries(groupedData).map(([machineName, items]) => (
-          <Card key={machineName} className="overflow-hidden mb-6">
+          <Card key={machineName} className="overflow-hidden mb-6 w-full">
             <CardHeader className="bg-blue-50 py-3">
               <CardTitle className="text-lg">{machineName}</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50 border-b">
-                    <th className="px-4 py-2 text-left text-sm font-medium">No.</th>
-                    <th className="px-4 py-2 text-left text-sm font-medium">구분</th>
-                    <th className="px-4 py-2 text-left text-sm font-medium">항목</th>
-                    <th className="px-4 py-2 text-left text-sm font-medium">규격</th>
-                    <th className="px-4 py-2 text-left text-sm font-medium">수량</th>
-                    <th className="px-4 py-2 text-left text-sm font-medium">단위</th>
-                    <th className="px-4 py-2 text-right text-sm font-medium">단가</th>
-                    <th className="px-4 py-2 text-right text-sm font-medium">금액</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {renderMachineryRows(items)}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b">
+                      <th className="px-4 py-2 text-left text-sm font-medium">No.</th>
+                      <th className="px-4 py-2 text-left text-sm font-medium">구분</th>
+                      <th className="px-4 py-2 text-left text-sm font-medium">항목</th>
+                      <th className="px-4 py-2 text-left text-sm font-medium">규격</th>
+                      <th className="px-4 py-2 text-left text-sm font-medium">수량</th>
+                      <th className="px-4 py-2 text-left text-sm font-medium">단위</th>
+                      <th className="px-4 py-2 text-right text-sm font-medium">단가</th>
+                      <th className="px-4 py-2 text-right text-sm font-medium">금액</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {renderMachineryRows(items)}
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
         ))

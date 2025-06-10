@@ -296,16 +296,31 @@ export default function Home() {
   };
 
   return (
-    <div className="flex w-full min-h-screen">
-      <MenuTree activeMenu={activeMenu} onMenuSelect={handleMenuSelect} />
-      
-      <main className="flex-1 p-8">
-        <h1 className="text-2xl font-bold mb-6">PE 라이너 관리 시스템</h1>
-        
-        <div className="bg-white p-6 rounded-lg shadow-sm">
-          {renderContent()}
+    <div className="flex flex-col h-screen bg-gray-50">
+      {/* 헤더 */}
+      <header className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <h1 className="text-xl font-bold text-blue-700">PE 라이너 관리 시스템</h1>
+          <div className="text-sm text-gray-500">v0.1.0</div>
         </div>
-      </main>
+      </header>
+      
+      {/* 메인 콘텐츠 */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* 사이드바 메뉴 */}
+        <aside className="w-64 bg-white border-r border-gray-200 shadow-sm">
+          <div className="p-3 h-full">
+            <MenuTree onMenuSelect={handleMenuSelect} activeMenu={activeMenu} />
+          </div>
+        </aside>
+        
+        {/* 콘텐츠 영역 */}
+        <main className="flex-1 overflow-auto">
+          <div className="p-6 w-full">
+            {renderContent()}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

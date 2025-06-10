@@ -216,7 +216,7 @@ const NaragetTable: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-4">
       <div className="flex flex-col gap-4 mb-4">
         <div className="flex justify-between items-center">
           <div>

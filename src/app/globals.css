@@ -118,5 +118,63 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
+}
+
+/* 스크롤바 스타일링 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 20px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+/* 다크모드 스크롤바 */
+.dark ::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+/* 유틸리티 클래스 */
+.pe-liner-card {
+  @apply bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow;
+}
+
+.pe-liner-title {
+  @apply text-xl font-bold text-blue-700 mb-4;
+}
+
+.pe-liner-subtitle {
+  @apply text-lg font-semibold text-gray-700 mb-3;
+}
+
+.pe-liner-text {
+  @apply text-gray-600;
+}
+
+.pe-liner-table {
+  @apply w-full border-collapse;
+}
+
+.pe-liner-table th {
+  @apply bg-gray-50 text-left p-2 border-b border-gray-200 text-gray-700 font-medium;
+}
+
+.pe-liner-table td {
+  @apply p-2 border-b border-gray-100;
 }

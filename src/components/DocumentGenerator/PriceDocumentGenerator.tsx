@@ -25,7 +25,7 @@ const findMaterialByNameAndSpec = (
     const nameMatch = m.name.includes(name) || (m.품명 && m.품명.includes(name));
     if (!specSize) return nameMatch;
     const specStr = String(specSize);
-    const specMatch = m.spec.includes(specStr) || (m.호칭지름 && m.호칭지름.includes(specStr));
+    const specMatch = (m.spec && m.spec.includes(specStr)) || (m.호칭지름 && m.호칭지름.includes(specStr));
     return nameMatch && specMatch;
   });
 };
@@ -67,10 +67,14 @@ interface DocumentItem {
   isSpecMatched?: boolean; // 규격 매칭 여부 추가
 }
 
+// surchargeRates에 대한 타입 정의 추가
+type TerrainType = '평지' | '산악지' | '시가지';
+type WorkingHoursType = '주간' | '야간';
+
 // Surcharge and Additional Cost States (Conceptual - normally from React state via UI)
 const surchargeConditions = {
-  terrain: '평지', // 예: '평지', '산악지', '시가지'
-  workingHours: '주간', // 예: '주간', '야간'
+  terrain: '평지' as TerrainType, // 예: '평지', '산악지', '시가지'
+  workingHours: '주간' as WorkingHoursType, // 예: '주간', '야간'
   riskTypes: [], // 예: ['활선작업', '고소작업']
   // ... 기타 할증 조건
 };
@@ -86,10 +90,10 @@ const surchargeRates = {
   terrain: {
     '산악지': { labor: 0.2, expense: 0.1 }, // 노무비 20%, 경비 10% 할증
     '시가지': { labor: 0.15, expense: 0.05 },
-  },
+  } as Record<TerrainType, { labor: number; expense: number }>,
   workingHours: {
     '야간': { labor: 0.25 }, // 노무비 25% 할증
-  },
+  } as Record<WorkingHoursType, { labor: number; expense?: number }>,
   // ... 기타 할증률
 };
 
@@ -417,6 +421,8 @@ export default function PriceDocumentGenerator() {
 
       const workInfo = currentSpecInfo || defaultWorkInfo;
       const isPipeMaterial = group.공종명.includes('관') && (group.공종명.includes('덕타일') || group.공종명.includes('주철관'));
+      // pipeSize 변수 추가 및 초기화
+      const pipeSize = extractSizeNumber(group.규격);
 
       if (group.단위 === 'm') {
         quantity = workInfo.totalLength;
@@ -859,7 +865,7 @@ export default function PriceDocumentGenerator() {
             
             // 중기 상세 항목 추가
             let itemNo = 1;
-            machineryData[machineName].forEach(item => {
+            machineryData[machineName].forEach((item: { 구분: string; 항목: string; 규격: string; 수량: string | number; 단위: string; 단가: string | number; 금액: number }) => {
               machineryTableData.push({
                 '중기명': '',
                 'No.': item.구분 === '소계' || item.구분 === '총계' ? '' : itemNo++,
@@ -1224,7 +1230,7 @@ export default function PriceDocumentGenerator() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="w-full space-y-6">
       <h2 className="text-xl font-semibold">내역서 만들기</h2>
       
       <Card className="shadow-md">

@@ -62,42 +62,44 @@ export default function MachineryUsageTable() {
   }, []);
 
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-4">
       <h2 className="text-xl font-semibold">중기사용목록</h2>
       
-      <Card>
+      <Card className="w-full">
         <CardHeader className="bg-blue-50 py-3">
           <CardTitle className="text-lg">중기사용목록 데이터</CardTitle>
         </CardHeader>
-        <CardContent className="p-0 overflow-x-auto">
-          {items.length > 0 ? (
-            <table className="w-full min-w-full border-collapse">
-              <thead>
-                <tr className="bg-gray-100">
-                  <th className="px-3 py-2 border text-sm font-medium text-center">중기명</th>
-                  <th className="px-3 py-2 border text-sm font-medium text-center">재료비</th>
-                  <th className="px-3 py-2 border text-sm font-medium text-center">노무비</th>
-                  <th className="px-3 py-2 border text-sm font-medium text-center">경비</th>
-                  <th className="px-3 py-2 border text-sm font-medium text-center">합계</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, index) => (
-                  <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-3 py-2 border text-sm">{item.name}</td>
-                    <td className="px-3 py-2 border text-sm text-right">{Math.round(item.material).toLocaleString()}</td>
-                    <td className="px-3 py-2 border text-sm text-right">{Math.round(item.labor).toLocaleString()}</td>
-                    <td className="px-3 py-2 border text-sm text-right">{Math.round(item.expense).toLocaleString()}</td>
-                    <td className="px-3 py-2 border text-sm text-right">{Math.round(item.total).toLocaleString()}</td>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            {items.length > 0 ? (
+              <table className="w-full min-w-full border-collapse">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="px-3 py-2 border text-sm font-medium text-center">중기명</th>
+                    <th className="px-3 py-2 border text-sm font-medium text-center">재료비</th>
+                    <th className="px-3 py-2 border text-sm font-medium text-center">노무비</th>
+                    <th className="px-3 py-2 border text-sm font-medium text-center">경비</th>
+                    <th className="px-3 py-2 border text-sm font-medium text-center">합계</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="p-4 text-gray-500">
-              {error || '표시할 중기사용목록 데이터가 없습니다.'}
-            </div>
-          )}
+                </thead>
+                <tbody>
+                  {items.map((item, index) => (
+                    <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="px-3 py-2 border text-sm">{item.name}</td>
+                      <td className="px-3 py-2 border text-sm text-right">{Math.round(item.material).toLocaleString()}</td>
+                      <td className="px-3 py-2 border text-sm text-right">{Math.round(item.labor).toLocaleString()}</td>
+                      <td className="px-3 py-2 border text-sm text-right">{Math.round(item.expense).toLocaleString()}</td>
+                      <td className="px-3 py-2 border text-sm text-right">{Math.round(item.total).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="p-4 text-center">
+                <p className="text-gray-500">중기사용목록 데이터가 없습니다.</p>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

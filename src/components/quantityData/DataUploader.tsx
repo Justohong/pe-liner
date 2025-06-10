@@ -170,7 +170,7 @@ export default function DataUploader({ onDataLoad }: DataUploaderProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="w-full space-y-6">
       <div className="bg-white p-6 rounded-lg shadow">
         <h2 className="text-xl font-semibold mb-4">수량정보 데이터 업로드</h2>
         <p className="text-gray-600 mb-4">일위대가_호표 및 중기사용료 시트가 포함된 엑셀 파일을 업로드해주세요.</p>

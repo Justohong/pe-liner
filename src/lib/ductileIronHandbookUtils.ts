@@ -1,11 +1,20 @@
 // 덕타일 주철관 핸드북 데이터 기반 유틸리티 함수
 
+// 파이프 무게 데이터 타입 정의
+type PipeWeightData = {
+  [diameter: number]: number;
+};
+
+type PipeWeightMap = {
+  [pipeClass: string]: PipeWeightData;
+};
+
 /**
  * 상수도 2종관의 호칭지름(mm)에 따른 m당 무게(kg)를 반환합니다.
  * (참고: 덕타일 주철관 핸드북 Ⅳ. 덕타일 주철관 - 표. 상수도 2종관)
  * 실제 핸드북 데이터를 기반으로 확장해야 합니다.
  */
-const ductilePipeWeightsData = {
+const ductilePipeWeightsData: PipeWeightMap = {
   '2종관': { // 예시 데이터, 실제 핸드북 값으로 채워야 함
     75: 12.8,
     100: 16.4,
@@ -38,7 +47,9 @@ export function getDuctilePipeWeight(pipeClass: string, diameterMM: number): num
  * 실제 핸드북 데이터를 기반으로 확장해야 합니다.
  * 고무링은 일반적으로 1개로 가정합니다.
  */
-const kpMechanicalJointPartsData = {
+const kpMechanicalJointPartsData: {
+  [diameter: number]: { bolts: number, nuts: number, rubberRing: number }
+} = {
   // 예시 데이터, 실제 핸드북 값으로 채워야 함
   75: { bolts: 4, nuts: 4, rubberRing: 1 },
   100: { bolts: 4, nuts: 4, rubberRing: 1 },
@@ -63,12 +74,21 @@ export function getKpMechanicalJointParts(diameterMM: number): { bolts: number, 
   return null;
 }
 
+// 파이프 표준길이 데이터 타입 정의
+type PipeStandardLengthData = {
+  [diameter: number]: number;
+};
+
+type PipeStandardLengthMap = {
+  [pipeClass: string]: PipeStandardLengthData;
+};
+
 /**
  * 덕타일 주철관의 관종 및 호칭지름(mm)에 따른 표준길이(m/본)를 반환합니다.
  * (참고: 덕타일 주철관 핸드북)
  * 실제 핸드북 데이터를 기반으로 확장해야 합니다.
  */
-const ductilePipeStandardLengthData = {
+const ductilePipeStandardLengthData: PipeStandardLengthMap = {
   // 예시 데이터, KSD 4311 기준 (일반적으로 4, 5, 6m)
   '1종관': {
     75: 6.0, 100: 6.0, 150: 6.0, 200: 6.0, 250: 6.0, 300: 6.0, 350: 6.0,

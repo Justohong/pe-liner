@@ -22,36 +22,38 @@ export default function MachineBaseTable({ data }: MachineBaseTableProps) {
   console.log('변환된 중기기초자료 데이터:', processedData);
   
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-4">
       <h2 className="text-xl font-semibold">중기기초자료</h2>
       
       {processedData.length > 0 ? (
-        <Card>
+        <Card className="w-full">
           <CardHeader className="bg-blue-50 py-3">
             <CardTitle className="text-lg">중기기초자료</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50 border-b">
-                  <th className="px-4 py-2 text-center text-sm font-medium">No</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium">명칭</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium">규격</th>
-                  <th className="px-4 py-2 text-left text-sm font-medium">단위</th>
-                  <th className="px-4 py-2 text-right text-sm font-medium">재료비</th>
-                  <th className="px-4 py-2 text-right text-sm font-medium">노무비</th>
-                  <th className="px-4 py-2 text-right text-sm font-medium">경비</th>
-                  <th className="px-4 py-2 text-right text-sm font-medium">합계</th>
-                </tr>
-              </thead>
-              <tbody>
-                {renderMachineBaseRows(processedData)}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="px-4 py-2 text-center text-sm font-medium">No</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium">명칭</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium">규격</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium">단위</th>
+                    <th className="px-4 py-2 text-right text-sm font-medium">재료비</th>
+                    <th className="px-4 py-2 text-right text-sm font-medium">노무비</th>
+                    <th className="px-4 py-2 text-right text-sm font-medium">경비</th>
+                    <th className="px-4 py-2 text-right text-sm font-medium">합계</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {renderMachineBaseRows(processedData)}
+                </tbody>
+              </table>
+            </div>
           </CardContent>
         </Card>
       ) : (
-        <div className="p-4 bg-red-50 border border-red-200 rounded">
+        <div className="p-4 bg-red-50 border border-red-200 rounded w-full">
           <p className="text-red-600">데이터가 없거나 형식이 올바르지 않습니다.</p>
         </div>
       )}

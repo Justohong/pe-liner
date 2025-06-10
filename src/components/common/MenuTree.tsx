@@ -18,26 +18,26 @@ const MenuTree: React.FC<MenuTreeProps> = ({ activeMenu, onMenuSelect }) => {
 
   // 공통 스타일 정의
   const menuHeaderStyles = (menu: string) => `
-    w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors
+    w-full flex items-center justify-between px-3 py-2 rounded-md transition-colors
     ${openMenus.includes(menu) 
       ? 'bg-blue-50 text-blue-700' 
       : 'text-gray-700 hover:bg-gray-50'}
   `;
 
   const submenuStyles = (isActive: boolean) => `
-    w-full text-left px-4 py-2 rounded-lg text-sm transition-colors
+    w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors
     ${isActive 
       ? 'bg-blue-100 text-blue-700 font-medium' 
       : 'text-gray-600 hover:bg-gray-50'}
   `;
 
   const arrowStyles = (menu: string) => `
-    w-5 h-5 transform transition-transform
+    w-4 h-4 transform transition-transform
     ${openMenus.includes(menu) ? 'rotate-180' : ''}
   `;
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 p-4 min-h-screen">
+    <div className="h-full overflow-y-auto">
       <div className="space-y-1">
         {/* 상수도공사 발주계획 */}
         <div>
@@ -56,7 +56,7 @@ const MenuTree: React.FC<MenuTreeProps> = ({ activeMenu, onMenuSelect }) => {
             </svg>
           </button>
           {openMenus.includes('waterProject') && (
-            <div className="ml-4 mt-2 space-y-1">
+            <div className="ml-3 mt-1 space-y-1">
               <button
                 onClick={() => onMenuSelect('waterProjectNaraget')}
                 className={submenuStyles(activeMenu === 'waterProjectNaraget')}
@@ -84,7 +84,7 @@ const MenuTree: React.FC<MenuTreeProps> = ({ activeMenu, onMenuSelect }) => {
             </svg>
           </button>
           {openMenus.includes('peLiner') && (
-            <div className="ml-4 mt-2 space-y-1">
+            <div className="ml-3 mt-1 space-y-1">
               {/* 기초정보 데이터 관리 */}
               <div>
                 <button
@@ -102,7 +102,7 @@ const MenuTree: React.FC<MenuTreeProps> = ({ activeMenu, onMenuSelect }) => {
                   </svg>
                 </button>
                 {openMenus.includes('peLinerBase') && (
-                  <div className="ml-4 mt-2 space-y-1">
+                  <div className="ml-3 mt-1 space-y-1">
                     <button
                       onClick={() => onMenuSelect('baseDataUpload')}
                       className={submenuStyles(activeMenu === 'baseDataUpload')}
@@ -148,7 +148,7 @@ const MenuTree: React.FC<MenuTreeProps> = ({ activeMenu, onMenuSelect }) => {
                   </svg>
                 </button>
                 {openMenus.includes('peLinerQuantity') && (
-                  <div className="ml-4 mt-2 space-y-1">
+                  <div className="ml-3 mt-1 space-y-1">
                     <button
                       onClick={() => onMenuSelect('peLinerDataUpload')}
                       className={submenuStyles(activeMenu === 'peLinerDataUpload')}
@@ -188,7 +188,7 @@ const MenuTree: React.FC<MenuTreeProps> = ({ activeMenu, onMenuSelect }) => {
                   </svg>
                 </button>
                 {openMenus.includes('peLinerCalc') && (
-                  <div className="ml-4 mt-2 space-y-1">
+                  <div className="ml-3 mt-1 space-y-1">
                     <button
                       onClick={() => onMenuSelect('peLinerDataUnitPriceList')}
                       className={submenuStyles(activeMenu === 'peLinerDataUnitPriceList')}

@@ -1,4 +1,22 @@
-export const standardCostData = {
+// 표준품셈 데이터 타입 정의
+interface StandardInputItem {
+  [key: string]: number | string;
+  단위: string;
+}
+
+interface StandardSpecMap {
+  [규격: string]: StandardInputItem;
+}
+
+interface StandardWorkMap {
+  [공종중분류: string]: StandardSpecMap;
+}
+
+interface StandardCostData {
+  [공종대분류: string]: StandardWorkMap;
+}
+
+export const standardCostData: StandardCostData = {
   관부설접합: {
     주철관_타이튼접합부설: {
       '100mm': { '배관공(수도)': 0.09, '보통인부': 0.18, '크레인_5ton_시간': 0.02, '단위': '본' },
@@ -20,7 +38,7 @@ export const standardCostData = {
   // 다른 공종 데이터 추가 예정
 };
 
-export function getStandardInputs(공종대분류: string, 공종중분류: string, 규격: string) {
+export function getStandardInputs(공종대분류: string, 공종중분류: string, 규격: string): StandardInputItem | null {
   if (standardCostData[공종대분류] &&
       standardCostData[공종대분류][공종중분류] &&
       standardCostData[공종대분류][공종중분류][규격]) {

@@ -79,7 +79,7 @@ export default function FileUpload({ onDataLoad }: FileUploadProps) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-4">
       <div
         className={`border-2 border-dashed rounded-lg p-6 text-center ${
           isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300'

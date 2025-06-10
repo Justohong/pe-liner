@@ -40,6 +40,8 @@ export interface GroupData {
   재료비금액: number;
   노무비금액: number;
   경비금액: number;
+  비고?: string;
+  품셈코드?: string;
 }
 
 export default function UnitPriceSheetTable({ data, onGroupsUpdated }: UnitPriceSheetTableProps) {
@@ -230,7 +232,7 @@ export default function UnitPriceSheetTable({ data, onGroupsUpdated }: UnitPrice
         if (diameter > 0 && (original공종명.includes('덕타일주철관') || original공종명.includes('주철관'))) {
           const pipeMaterialInfo = 자재데이터.find(m =>
             (m.name.includes(original공종명) || m.품명.includes(original공종명)) &&
-            m.spec.includes(String(diameter)) &&
+            (m.spec && m.spec.includes(String(diameter))) &&
             m.호칭지름 === String(diameter) // 정확한 호칭지름 일치
             // && m.관종분류 === '2종관' // 필요한 경우 관종분류까지 조건에 추가
           );
@@ -290,7 +292,7 @@ export default function UnitPriceSheetTable({ data, onGroupsUpdated }: UnitPrice
         let conversionFactor = 1;
         const mainMaterialForUnitConversion = 자재데이터.find(m =>
             (m.name.includes(original공종명) || 품명포함(m.품명, original공종명)) &&
-            m.spec.includes(original규격) &&
+            (m.spec && m.spec.includes(original규격)) &&
             m.표준길이_m_per_본 && m.표준길이_m_per_본 > 0
         );
 
@@ -331,10 +333,10 @@ export default function UnitPriceSheetTable({ data, onGroupsUpdated }: UnitPrice
         let materialMatchExisting = null;
         if (original규격.trim() !== '') {
           materialMatchExisting = 자재데이터.find(item =>
-            item.name && item.spec && (
+            item.name && (item.spec && (
               (item.name.includes(original공종명.trim()) || original공종명.trim().includes(item.name)) &&
               (item.spec.includes(original규격.trim()) || original규격.trim().includes(item.spec))
-            )
+            ))
           );
         }
         if (!materialMatchExisting) {
@@ -539,7 +541,7 @@ export default function UnitPriceSheetTable({ data, onGroupsUpdated }: UnitPrice
   // 데이터 체크
   if (!data || !data.data || !data.sheetNames || !data.sheetNames.includes('일위대가_호표')) {
     return (
-      <div className="p-4 bg-amber-50 text-amber-800 rounded border border-amber-200">
+      <div className="w-full p-4 bg-amber-50 text-amber-800 rounded border border-amber-200">
         <p>일위대가_호표 시트를 찾을 수 없습니다. 해당 시트가 포함된 엑셀 파일을 업로드해주세요.</p>
       </div>
     );
@@ -557,7 +559,7 @@ export default function UnitPriceSheetTable({ data, onGroupsUpdated }: UnitPrice
   });
 
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-4">
       <h2 className="text-xl font-semibold">일위대가_호표</h2>
       
       <Card>
