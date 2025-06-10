@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useDebouncedCallback } from 'use-debounce';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,24 +22,15 @@ export default function CalculatorPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // 계산 요청 처리
-  const handleCalculate = async () => {
-    setError(null);
-    setResult(null);
+  // 디바운스 콜백 함수 생성 (300ms 지연)
+  const debouncedApiCall = useDebouncedCallback(async (options) => {
     setLoading(true);
-
+    setError(null);
     try {
       const response = await fetch('/api/calculate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          pipeType,
-          diameter,
-          length,
-          isRiser,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options),
       });
 
       const data = await response.json();
@@ -50,10 +42,25 @@ export default function CalculatorPage() {
       setResult(data);
     } catch (err: any) {
       setError(err.message || '계산 중 오류가 발생했습니다.');
+      setResult(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, 300); // 300ms 디바운스
+
+  // useEffect 훅으로 입력값 변경 감지 및 API 호출
+  useEffect(() => {
+    // 유효한 입력값이 있을 때만 API 호출
+    if (diameter > 0 && length > 0) {
+      const options = {
+        pipeType,
+        diameter,
+        length,
+        isRiser,
+      };
+      debouncedApiCall(options);
+    }
+  }, [pipeType, diameter, length, isRiser, debouncedApiCall]);
 
   // 숫자 포맷팅 함수
   const formatNumber = (value: number) => {
@@ -120,20 +127,18 @@ export default function CalculatorPage() {
               <Checkbox
                 id="is-riser"
                 checked={isRiser}
-                onCheckedChange={(checked) => setIsRiser(checked === true)}
+                onCheckedChange={(checked: boolean | 'indeterminate') => setIsRiser(checked === true)}
               />
               <Label htmlFor="is-riser">입상관 (노무비 30% 할증)</Label>
             </div>
+            
+            {/* 로딩 상태 표시 */}
+            {loading && (
+              <div className="py-2 text-center text-blue-600 animate-pulse">
+                계산 중...
+              </div>
+            )}
           </CardContent>
-          <CardFooter>
-            <Button 
-              onClick={handleCalculate} 
-              disabled={loading}
-              className="w-full"
-            >
-              {loading ? '계산 중...' : '계산하기'}
-            </Button>
-          </CardFooter>
         </Card>
 
         {/* 결과 카드 */}
@@ -214,7 +219,7 @@ export default function CalculatorPage() {
               </div>
             ) : (
               <div className="p-4 text-gray-500 text-center">
-                <p>계산 버튼을 클릭하여 결과를 확인하세요.</p>
+                <p>입력값을 변경하면 자동으로 계산됩니다.</p>
               </div>
             )}
           </CardContent>
