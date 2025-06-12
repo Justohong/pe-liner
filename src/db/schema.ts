@@ -29,6 +29,7 @@ export const UnitPriceRules = pgTable('unit_price_rules', {
     pipeType: varchar('pipe_type', { length: 50 }).notNull(),       // 관종 ('steel', 'ductile')
     minDiameter: integer('min_diameter').notNull(),                   // 최소 적용 관경 (mm)
     maxDiameter: integer('max_diameter').notNull(),                   // 최대 적용 관경 (mm)
+    workCategory: varchar('work_category', { length: 255 }).notNull().default('기타'), // "토공", "가시설공" 등 공종 저장
     
     // 외래 키(Foreign Key) 설정: PriceList 테이블의 항목을 참조합니다.
     itemCode: varchar('item_code', { length: 50 }).notNull().references(() => PriceList.itemCode),
@@ -54,4 +55,16 @@ export const SurchargeRules = pgTable('surcharge_rules', {
     
     // 할증이 적용될 대상 (예: 'labor_cost', 'total_cost')
     target: varchar('target', { length: 100 }).notNull(),
+});
+
+/**
+ * @description 간접비(경비) 계산 규칙 테이블
+ * 산재보험료, 안전관리비, 이윤 등 간접비 항목과 요율을 저장합니다.
+ */
+export const OverheadRules = pgTable('overhead_rules', {
+  id: serial('id').primaryKey(),
+  itemName: varchar('item_name', { length: 255 }).notNull().unique(), // 경비 항목명
+  // 적용 기준: 'direct_labor_cost', 'direct_material_cost', 'total_direct_cost' 등
+  basis: varchar('basis', { length: 100 }).notNull(),
+  rate: real('rate').notNull(), // 적용 요율 (예: 3.2%일 경우 0.032)
 }); 

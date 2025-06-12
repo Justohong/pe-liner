@@ -1,5 +1,5 @@
 import { db, closeConnection } from './index';
-import { PriceList, UnitPriceRules, SurchargeRules } from './schema';
+import { PriceList, UnitPriceRules, SurchargeRules, OverheadRules } from './schema';
 import fs from 'fs';
 import csvParser from 'csv-parser';
 import dotenv from 'dotenv';
@@ -14,7 +14,13 @@ const DATA_DIR = './public/data';
 const MATERIAL_FILE = path.join(DATA_DIR, 'D1200mm 주철관기준(2024).xlsx - 자재.csv');
 const LABOR_FILE = path.join(DATA_DIR, 'D1200mm 주철관기준(2024).xlsx - 노임.csv');
 const EQUIPMENT_FILE = path.join(DATA_DIR, 'D1200mm 주철관기준(2024).xlsx - 중기사용료.csv');
-const UNIT_PRICE_SHEET_FILE = path.join(DATA_DIR, '일위대가_호표.csv');
+const OVERHEAD_FILE = path.join(DATA_DIR, '경비.csv');
+
+// 처리할 일위대가표 파일 목록 정의
+const unitPriceSheets = [
+  { filePath: path.join(DATA_DIR, '일위대가_호표.csv'), pipeType: 'ductile' as const },
+  // 추가 일위대가표 파일이 있다면 여기에 추가
+];
 
 // 기본 데이터 (CSV 파일이 없을 경우 사용)
 const DEFAULT_MATERIALS = [
@@ -33,6 +39,14 @@ const DEFAULT_EQUIPMENT = [
   { itemCode: 'E0001', itemName: '라이닝기', unit: '시간', unitPrice: 50000, type: 'equipment' },
   { itemCode: 'E0002', itemName: '공기압축기', unit: '시간', unitPrice: 30000, type: 'equipment' },
   { itemCode: 'E0003', itemName: '1톤 트럭', unit: '시간', unitPrice: 25000, type: 'equipment' },
+];
+
+// 기본 간접비 데이터 (CSV 파일이 없을 경우 사용)
+const DEFAULT_OVERHEAD = [
+  { itemName: '산재보험료', basis: 'direct_labor_cost', rate: 0.0319 },
+  { itemName: '고용보험료', basis: 'direct_labor_cost', rate: 0.0085 },
+  { itemName: '안전관리비', basis: 'total_direct_cost', rate: 0.018 },
+  { itemName: '이윤', basis: 'total_direct_cost', rate: 0.12 },
 ];
 
 /**
@@ -70,6 +84,19 @@ async function clearSurchargeRules() {
     await db.delete(SurchargeRules);
   } catch (error) {
     console.error('Error clearing SurchargeRules table:', error);
+    console.log('Continuing with seeding...');
+  }
+}
+
+/**
+ * OverheadRules 테이블을 초기화하는 함수
+ */
+async function clearOverheadRules() {
+  console.log('Clearing OverheadRules table...');
+  try {
+    await db.delete(OverheadRules);
+  } catch (error) {
+    console.error('Error clearing OverheadRules table:', error);
     console.log('Continuing with seeding...');
   }
 }
@@ -211,19 +238,44 @@ async function seedEquipment() {
 }
 
 /**
+ * 공종 헤더인지 확인하는 함수
+ */
+function isCategoryHeader(record: any): boolean {
+  // "1. 토공" 과 같은 형식의 공종 헤더 행을 식별
+  const title = record['공종']?.trim();
+  if (!title) return false;
+  
+  // "No. 1 관 갱생공 (D300)"과 같은 형식은 공종 헤더가 아님
+  if (title.startsWith('No.')) return false;
+  
+  // "1. 토공", "2. 가시설공" 등의 형식이면 공종 헤더로 판단
+  return /^\d+\.\s+.+/.test(title);
+}
+
+/**
+ * 공종 헤더에서 카테고리명을 추출하는 함수
+ */
+function parseCategory(record: any): string {
+  const title = record['공종']?.trim() || '';
+  // "1. 토공" -> "토공" 추출
+  const match = title.match(/^\d+\.\s+(.+)/);
+  return match ? match[1] : '기타';
+}
+
+/**
  * 일위대가_호표.csv 파일을 읽어 UnitPriceRules 테이블에 데이터를 채우는 함수
  */
-async function seedUnitPriceRulesFromExcel() {
-  console.log('Seeding Unit Price Rules from Excel...');
+async function seedUnitPriceRulesFromExcel(filePath: string, defaultPipeType: 'ductile' | 'steel') {
+  console.log(`Seeding Unit Price Rules from ${path.basename(filePath)}...`);
   
   try {
-    if (!fileExists(UNIT_PRICE_SHEET_FILE)) {
-      console.warn(`일위대가 호표 파일을 찾을 수 없습니다: ${UNIT_PRICE_SHEET_FILE}`);
+    if (!fileExists(filePath)) {
+      console.warn(`일위대가 호표 파일을 찾을 수 없습니다: ${filePath}`);
       return;
     }
 
     // 1. 일위대가_호표.csv 파일 읽기
-    const content = fs.readFileSync(UNIT_PRICE_SHEET_FILE);
+    const content = fs.readFileSync(filePath);
     const records = parse(content, { 
       columns: true, 
       skip_empty_lines: true,
@@ -253,31 +305,45 @@ async function seedUnitPriceRulesFromExcel() {
 
     const rulesToInsert = [];
     let currentGroupInfo = { 
-      pipeType: 'ductile',  // 기본값은 주철관
+      pipeType: defaultPipeType,  // 기본값은 인자로 전달받은 관종
       minDiameter: 0, 
       maxDiameter: 0, 
       description: '' 
     };
     
     // 파일명에서 관종 정보 추출 시도
-    if (UNIT_PRICE_SHEET_FILE.toLowerCase().includes('강관')) {
+    if (filePath.toLowerCase().includes('강관')) {
       currentGroupInfo.pipeType = 'steel';
+    } else if (filePath.toLowerCase().includes('주철관')) {
+      currentGroupInfo.pipeType = 'ductile';
     }
+
+    // 현재 공종을 저장할 변수
+    let currentWorkCategory = '관로공';
 
     console.log('Processing unit price sheet records...');
     for (const record of records) {
+      // 공종 헤더 행 처리 (예: "1. 토공")
+      if (isCategoryHeader(record)) {
+        currentWorkCategory = parseCategory(record);
+        console.log(`Found work category: ${currentWorkCategory}`);
+        continue;
+      }
+      
       // 3. 그룹 행(예: "No. 1 관 갱생공 (D300)")을 만나면, 현재 작업의 관종/관경 정보 업데이트
       if (record['공종'] && record['공종'].trim().startsWith('No.')) {
         const title = record['공종'].trim();
         console.log(`Processing group: ${title}`);
         
         // 관종 정보 (파일명이나 그룹 제목에서 추출)
-        // 기본값은 주철관(ductile)으로 설정
-        currentGroupInfo.pipeType = 'ductile';
+        // 기본값은 인자로 전달받은 관종으로 설정
+        currentGroupInfo.pipeType = defaultPipeType;
         
         // 그룹 제목에서 관종 정보 추출 시도
         if (title.includes('강관')) {
           currentGroupInfo.pipeType = 'steel';
+        } else if (title.includes('주철관')) {
+          currentGroupInfo.pipeType = 'ductile';
         }
         
         // 관경 정보 추출 (예: "D300"에서 300 추출)
@@ -287,7 +353,7 @@ async function seedUnitPriceRulesFromExcel() {
           currentGroupInfo.minDiameter = diameter;
           currentGroupInfo.maxDiameter = diameter;
           currentGroupInfo.description = title;
-          console.log(`  - Pipe type: ${currentGroupInfo.pipeType}, Diameter: ${diameter}mm`);
+          console.log(`  - Pipe type: ${currentGroupInfo.pipeType}, Diameter: ${diameter}mm, Category: ${currentWorkCategory}`);
         } else {
           console.warn(`  - 관경 정보를 찾을 수 없습니다: ${title}`);
         }
@@ -330,12 +396,13 @@ async function seedUnitPriceRulesFromExcel() {
           pipeType: currentGroupInfo.pipeType,
           minDiameter: currentGroupInfo.minDiameter,
           maxDiameter: currentGroupInfo.maxDiameter,
+          workCategory: currentWorkCategory, // 현재 공종 정보 추가
           itemCode: itemCode,
           quantity: quantity
         };
         
         rulesToInsert.push(rule);
-        console.log(`  - Added rule: ${itemName}, quantity: ${quantity}, type: ${itemType}`);
+        console.log(`  - Added rule: ${itemName}, quantity: ${quantity}, type: ${itemType}, category: ${currentWorkCategory}`);
       } else {
         console.warn(`  - PriceList에서 품목을 찾을 수 없습니다: ${itemName}${spec ? ` (${spec})` : ''}`);
       }
@@ -344,12 +411,55 @@ async function seedUnitPriceRulesFromExcel() {
     // 5. DB에 최종 데이터 삽입
     if (rulesToInsert.length > 0) {
       await db.insert(UnitPriceRules).values(rulesToInsert).onConflictDoNothing();
-      console.log(`${rulesToInsert.length} unit price rules from Excel seeded.`);
+      console.log(`${rulesToInsert.length} unit price rules from ${path.basename(filePath)} seeded.`);
     } else {
-      console.warn('삽입할 규칙이 없습니다.');
+      console.warn(`${path.basename(filePath)}에서 삽입할 규칙이 없습니다.`);
     }
   } catch (error) {
-    console.error('Error seeding unit price rules from Excel:', error);
+    console.error(`Error seeding unit price rules from ${path.basename(filePath)}:`, error);
+  }
+}
+
+/**
+ * 간접비(경비) 데이터를 시딩하는 함수
+ */
+async function seedOverheadRules() {
+  console.log('Seeding overhead rules...');
+  try {
+    let values: any[] = [];
+    
+    // CSV 파일에서 데이터 읽기 시도
+    if (fileExists(OVERHEAD_FILE)) {
+      const content = fs.readFileSync(OVERHEAD_FILE);
+      const records = parse(content, { 
+        columns: true, 
+        skip_empty_lines: true,
+        trim: true
+      });
+      
+      if (records.length > 0) {
+        values = records.map((record: any) => ({
+          itemName: record['항목명'],
+          basis: record['적용기준'],
+          rate: parseFloat(record['요율']) || 0
+        }));
+      }
+    }
+    
+    // CSV 파일이 없거나 비어있으면 기본 데이터 사용
+    if (values.length === 0) {
+      console.log('Using default overhead data');
+      values = DEFAULT_OVERHEAD;
+    }
+
+    if (values.length > 0) {
+      await db.insert(OverheadRules).values(values).onConflictDoNothing();
+      console.log(`${values.length} overhead rules seeded.`);
+    } else {
+      console.warn('삽입할 간접비 규칙이 없습니다.');
+    }
+  } catch (error) {
+    console.error('Error seeding overhead rules:', error);
   }
 }
 
@@ -380,15 +490,20 @@ async function main() {
     await clearUnitPriceRules();
     await clearSurchargeRules();
     await clearPriceList();
+    await clearOverheadRules();
 
     // 기본 데이터 시딩
     await seedMaterials();
     await seedLabor();
     await seedEquipment();
     
-    // 기존 seedUnitPriceRules() 대신 새로운 함수 사용
-    await seedUnitPriceRulesFromExcel();
+    // 모든 일위대가표 파일 처리
+    for (const sheet of unitPriceSheets) {
+      await seedUnitPriceRulesFromExcel(sheet.filePath, sheet.pipeType);
+    }
     
+    // 간접비 및 할증 규칙 시딩
+    await seedOverheadRules();
     await seedSurchargeRules();
 
     console.log('Seeding process completed successfully.');

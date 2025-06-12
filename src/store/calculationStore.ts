@@ -1,13 +1,25 @@
 import { create } from 'zustand';
 
+// 공종별 비용 타입
+export interface CategoryCost {
+  category: string;
+  materialCost: number;
+  laborCost: number;
+  equipmentCost: number;
+  totalCost: number;
+}
+
 // API 응답 결과에 대한 상세 타입을 정의합니다.
 // 이 타입은 이전에 calculationEngine.ts 또는 calculator/page.tsx 에서 정의했던 것과 동일합니다.
-interface CalculationResult {
+export interface CalculationResult {
   totalCost: number;
   directMaterialCost: number;
   directLaborCost: number;
   directEquipmentCost: number;
   surchargeDetails: { description: string; amount: number }[];
+  overheadDetails: { itemName: string; amount: number }[]; // 간접비 상세 내역
+  totalOverheadCost: number; // 총 간접비
+  costsByCategory: CategoryCost[]; // 공종별 비용
   lineItems: {
     itemName: string;
     unit: string;
@@ -15,6 +27,7 @@ interface CalculationResult {
     unitPrice: number;
     totalPrice: number;
     type: 'material' | 'labor' | 'equipment';
+    workCategory?: string; // 공종 정보
   }[];
 }
 

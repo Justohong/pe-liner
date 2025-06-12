@@ -56,6 +56,15 @@ export const menuData: MenuItem[] = [
     children: [
       { id: 'material-data', label: '자재데이터' },
       { id: 'labor-data', label: '노임데이터' },
+      { id: 'overhead-data', label: '경비' },
+    ],
+  },
+  {
+    id: 'documents',
+    label: '문서',
+    children: [
+      { id: 'hopyo-document', label: '일위대가 호표' },
+      { id: 'overhead-document', label: '경비 내역' },
     ],
   },
 ];

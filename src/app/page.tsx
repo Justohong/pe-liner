@@ -14,6 +14,8 @@ import PriceDocumentGenerator from '@/components/DocumentGenerator/PriceDocument
 import NaragetTable from '@/components/waterProject/NaragetTable';
 import MachineBaseTable from '@/components/baseData/MachineBaseTable';
 import DataUploader from '@/components/quantityData/DataUploader';
+import UnitPriceSheetViewer from '@/components/documents/UnitPriceSheetViewer';
+import OverheadViewer from '@/components/documents/OverheadViewer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
@@ -255,6 +257,33 @@ export default function Home() {
             </CardHeader>
             <CardContent>
               <MachineryUsageTable />
+            </CardContent>
+          </Card>
+        );
+        
+      case 'hopyo-document':
+        // 일위대가 호표 문서 메뉴
+        return (
+          <Card className="w-full">
+            <CardHeader>
+              <CardTitle className="text-2xl">{menuLabel}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {result && <UnitPriceSheetViewer items={result.lineItems} />}
+            </CardContent>
+          </Card>
+        );
+        
+      case 'overhead-data':
+      case 'overhead-document':
+        // 경비 내역 메뉴
+        return (
+          <Card className="w-full">
+            <CardHeader>
+              <CardTitle className="text-2xl">{menuLabel}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {result && <OverheadViewer items={result.overheadDetails} />}
             </CardContent>
           </Card>
         );

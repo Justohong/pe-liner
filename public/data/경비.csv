@@ -1,0 +1,10 @@
+항목명,적용기준,요율
+산재보험료,direct_labor_cost,0.0319
+고용보험료,direct_labor_cost,0.0085
+건강보험료,direct_labor_cost,0.0345
+국민연금,direct_labor_cost,0.0455
+노인장기요양보험,direct_labor_cost,0.0068
+안전관리비,total_direct_cost,0.018
+환경보전비,total_direct_cost,0.009
+기타경비,total_direct_cost,0.03
+이윤,total_direct_cost,0.12 

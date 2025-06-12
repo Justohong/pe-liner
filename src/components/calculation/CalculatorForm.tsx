@@ -8,6 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useCalculationStore } from '@/store/calculationStore';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import BillOfStatement from '@/components/documents/BillOfStatement';
 
 // API 호출 옵션 타입 정의
 interface CalculationOptions {
@@ -120,45 +122,84 @@ export function CalculatorForm() {
             </CardContent>
           </Card>
 
-          {/* 2. 상세 내역 테이블 */}
-          <div>
-            <h3 className="font-bold mb-2">상세 산출 내역</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>구분</TableHead>
-                  <TableHead>품명</TableHead>
-                  <TableHead className="text-right">수량</TableHead>
-                  <TableHead className="text-right">단가</TableHead>
-                  <TableHead className="text-right">금액 (1m 기준)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {result.lineItems.map((item, index) => (
-                  <TableRow key={index}>
-                    <TableCell>{item.type === 'material' ? '재료비' : item.type === 'labor' ? '노무비' : '장비비'}</TableCell>
-                    <TableCell>{item.itemName}</TableCell>
-                    <TableCell className="text-right">{item.quantity.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{item.unitPrice.toLocaleString()}</TableCell>
-                    <TableCell className="text-right">{item.totalPrice.toLocaleString()}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          {/* 탭 컴포넌트 추가 */}
+          <Tabs defaultValue="details" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="details">상세 내역</TabsTrigger>
+              <TabsTrigger value="statement">내역서</TabsTrigger>
+            </TabsList>
+            <TabsContent value="details" className="space-y-6">
+              {/* 2. 상세 내역 테이블 */}
+              <div>
+                <h3 className="font-bold mb-2">상세 산출 내역</h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>구분</TableHead>
+                      <TableHead>품명</TableHead>
+                      <TableHead className="text-right">수량</TableHead>
+                      <TableHead className="text-right">단가</TableHead>
+                      <TableHead className="text-right">금액 (1m 기준)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {result.lineItems.map((item, index) => (
+                      <TableRow key={index}>
+                        <TableCell>{item.type === 'material' ? '재료비' : item.type === 'labor' ? '노무비' : '장비비'}</TableCell>
+                        <TableCell>{item.itemName}</TableCell>
+                        <TableCell className="text-right">{item.quantity.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">{item.unitPrice.toLocaleString()}</TableCell>
+                        <TableCell className="text-right">{item.totalPrice.toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
-          {/* 3. 할증 내역 */}
-          {result.surchargeDetails.length > 0 && (
-            <div>
-              <h3 className="font-bold mb-2">할증 내역</h3>
-              {result.surchargeDetails.map((detail, index) => (
-                <div key={index} className="flex justify-between p-2 bg-blue-50 rounded">
-                  <p>{detail.description}</p>
-                  <p>+ {detail.amount.toLocaleString()} 원</p>
+              {/* 3. 할증 내역 */}
+              {result.surchargeDetails.length > 0 && (
+                <div>
+                  <h3 className="font-bold mb-2">할증 내역</h3>
+                  {result.surchargeDetails.map((detail, index) => (
+                    <div key={index} className="flex justify-between p-2 bg-blue-50 rounded">
+                      <p>{detail.description}</p>
+                      <p>+ {detail.amount.toLocaleString()} 원</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              )}
+
+              {/* 4. 간접비(경비) 내역 */}
+              {result.overheadDetails && result.overheadDetails.length > 0 && (
+                <div>
+                  <h3 className="font-bold mb-2">간접비(경비) 내역</h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>항목</TableHead>
+                        <TableHead className="text-right">금액</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {result.overheadDetails.map((detail, index: number) => (
+                        <TableRow key={index}>
+                          <TableCell>{detail.itemName}</TableCell>
+                          <TableCell className="text-right">{detail.amount.toLocaleString()} 원</TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow className="bg-gray-50 font-medium">
+                        <TableCell>총 간접비</TableCell>
+                        <TableCell className="text-right">{result.totalOverheadCost.toLocaleString()} 원</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
+            <TabsContent value="statement">
+              <BillOfStatement result={result} />
+            </TabsContent>
+          </Tabs>
         </div>
       )}
     </div>
