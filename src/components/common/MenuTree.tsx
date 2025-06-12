@@ -38,8 +38,8 @@ export const menuData: MenuItem[] = [
     id: 'data_group',
     label: '기초 데이터',
     children: [
-      { id: 'material-data', label: '자재 데이터' },
-      { id: 'labor-data', label: '노임 데이터' },
+      { id: 'material-data', label: '자재데이터' },
+      { id: 'labor-data', label: '노임데이터' },
       { id: 'equipment-data', label: '중기사용료' },
     ],
   },
@@ -64,7 +64,7 @@ const MenuItem = ({ item, activeMenu, onMenuSelect, depth = 0 }: MenuItemProps) 
         <span className={!hasChildren ? '' : 'font-bold'}>{item.label}</span>
         {hasChildren && <span className="float-right">{isOpen ? '▼' : '▶'}</span>}
       </div>
-      {hasChildren && isOpen && (
+      {hasChildren && isOpen && item.children && (
         <div className="mt-1 space-y-1">
           {item.children.map(child => <MenuItem key={child.id} item={child} activeMenu={activeMenu} onMenuSelect={onMenuSelect} depth={depth + 1} />)}
         </div>
