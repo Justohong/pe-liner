@@ -232,76 +232,112 @@ async function seedUnitPriceRulesFromExcel() {
 
     // 2. PriceList 테이블에서 모든 항목 조회하여 매핑 테이블 생성
     const priceListItems = await db.select().from(PriceList);
-    const materialMap = new Map();
-    const laborMap = new Map();
-    const equipmentMap = new Map();
-
+    
+    // 품명과 규격을 기준으로 itemCode를 찾기 위한 맵 생성
+    const itemCodeMap = new Map();
+    
+    // 품명만으로 itemCode를 찾기 위한 백업 맵 생성
+    const itemNameMap = new Map();
+    
     priceListItems.forEach(item => {
-      if (item.type === 'material') {
-        materialMap.set(item.itemName, item.itemCode);
-      } else if (item.type === 'labor') {
-        laborMap.set(item.itemName, item.itemCode);
-      } else if (item.type === 'equipment') {
-        equipmentMap.set(item.itemName, item.itemCode);
-      }
+      // 품명+규격 조합으로 맵 생성 (더 정확한 매칭을 위해)
+      const key = `${item.itemName}|${item.type}`;
+      itemCodeMap.set(key, item.itemCode);
+      
+      // 품명만으로도 맵 생성 (백업용)
+      itemNameMap.set(item.itemName, {
+        itemCode: item.itemCode,
+        type: item.type
+      });
     });
 
     const rulesToInsert = [];
-    let currentGroupInfo = { pipeType: 'ductile', minDiameter: 0, maxDiameter: 0, description: '' };
+    let currentGroupInfo = { 
+      pipeType: 'ductile',  // 기본값은 주철관
+      minDiameter: 0, 
+      maxDiameter: 0, 
+      description: '' 
+    };
+    
+    // 파일명에서 관종 정보 추출 시도
+    if (UNIT_PRICE_SHEET_FILE.toLowerCase().includes('강관')) {
+      currentGroupInfo.pipeType = 'steel';
+    }
 
+    console.log('Processing unit price sheet records...');
     for (const record of records) {
       // 3. 그룹 행(예: "No. 1 관 갱생공 (D300)")을 만나면, 현재 작업의 관종/관경 정보 업데이트
       if (record['공종'] && record['공종'].trim().startsWith('No.')) {
         const title = record['공종'].trim();
         console.log(`Processing group: ${title}`);
         
-        // 관종 정보 (기본값은 주철관)
+        // 관종 정보 (파일명이나 그룹 제목에서 추출)
+        // 기본값은 주철관(ductile)으로 설정
         currentGroupInfo.pipeType = 'ductile';
+        
+        // 그룹 제목에서 관종 정보 추출 시도
         if (title.includes('강관')) {
           currentGroupInfo.pipeType = 'steel';
         }
         
         // 관경 정보 추출 (예: "D300"에서 300 추출)
-        const diameterMatch = title.match(/D(\d+)/);
+        const diameterMatch = title.match(/D(\d+)/i);
         if (diameterMatch && diameterMatch[1]) {
           const diameter = parseInt(diameterMatch[1]);
           currentGroupInfo.minDiameter = diameter;
           currentGroupInfo.maxDiameter = diameter;
           currentGroupInfo.description = title;
+          console.log(`  - Pipe type: ${currentGroupInfo.pipeType}, Diameter: ${diameter}mm`);
         } else {
-          console.warn(`관경 정보를 찾을 수 없습니다: ${title}`);
+          console.warn(`  - 관경 정보를 찾을 수 없습니다: ${title}`);
         }
         continue;
       }
 
       // 4. 일반 항목 행(재료비, 노무비 등) 처리
       const itemName = record['품명']?.trim();
-      const quantity = parseFloat(record['수량']) || 0;
+      const spec = record['규격']?.trim() || '';
+      const quantity = parseFloat(record['수량']?.replace(',', '.')) || 0;
 
-      if (itemName && quantity > 0) {
-        let itemCode = null;
-        
-        // 품명으로 itemCode 찾기
-        if (materialMap.has(itemName)) {
-          itemCode = materialMap.get(itemName);
-        } else if (laborMap.has(itemName)) {
-          itemCode = laborMap.get(itemName);
-        } else if (equipmentMap.has(itemName)) {
-          itemCode = equipmentMap.get(itemName);
+      if (!itemName || quantity <= 0) {
+        continue; // 품명이 없거나 수량이 0이하인 행은 건너뜀
+      }
+
+      // 품명과 타입을 기준으로 itemCode 찾기
+      let itemCode = null;
+      let itemType = null;
+      
+      // 1단계: 품명을 기준으로 PriceList에서 매칭 시도
+      const itemInfo = itemNameMap.get(itemName);
+      if (itemInfo) {
+        itemCode = itemInfo.itemCode;
+        itemType = itemInfo.type;
+      }
+      
+      // 2단계: 품명+타입 조합으로 매칭 시도 (더 정확한 매칭)
+      ['material', 'labor', 'equipment'].forEach(type => {
+        const key = `${itemName}|${type}`;
+        if (itemCodeMap.has(key)) {
+          itemCode = itemCodeMap.get(key);
+          itemType = type;
         }
+      });
+      
+      if (itemCode) {
+        // 규칙 객체 생성
+        const rule = {
+          description: `${currentGroupInfo.description} - ${itemName}${spec ? ` (${spec})` : ''}`,
+          pipeType: currentGroupInfo.pipeType,
+          minDiameter: currentGroupInfo.minDiameter,
+          maxDiameter: currentGroupInfo.maxDiameter,
+          itemCode: itemCode,
+          quantity: quantity
+        };
         
-        if (itemCode) {
-          rulesToInsert.push({
-            description: currentGroupInfo.description,
-            pipeType: currentGroupInfo.pipeType,
-            minDiameter: currentGroupInfo.minDiameter,
-            maxDiameter: currentGroupInfo.maxDiameter,
-            itemCode: itemCode,
-            quantity: quantity
-          });
-        } else {
-          console.warn(`PriceList에서 품목을 찾을 수 없습니다: ${itemName}`);
-        }
+        rulesToInsert.push(rule);
+        console.log(`  - Added rule: ${itemName}, quantity: ${quantity}, type: ${itemType}`);
+      } else {
+        console.warn(`  - PriceList에서 품목을 찾을 수 없습니다: ${itemName}${spec ? ` (${spec})` : ''}`);
       }
     }
     
