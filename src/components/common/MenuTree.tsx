@@ -1,233 +1,127 @@
-import React, { useState } from 'react';
+'use client';
+import { useState } from 'react';
+
+// 메뉴 아이템 타입 정의
+interface MenuItem {
+  id: string;
+  label: string;
+  children?: MenuItem[];
+}
+
+interface MenuItemProps {
+  item: MenuItem;
+  activeMenu: string;
+  onMenuSelect: (menuId: string) => void;
+  depth?: number;
+}
 
 interface MenuTreeProps {
   activeMenu: string;
-  onMenuSelect: (menu: string) => void;
+  onMenuSelect: (menuId: string) => void;
 }
 
-const MenuTree: React.FC<MenuTreeProps> = ({ activeMenu, onMenuSelect }) => {
-  const [openMenus, setOpenMenus] = useState<string[]>(['waterProject', 'peLiner', 'peLinerBase', 'peLinerQuantity', 'peLinerCalc']);
+// 메뉴 데이터 구조 정의
+export const menuData: MenuItem[] = [
+  {
+    id: 'waterProject',
+    label: '상수도공사 발주계획',
+    children: [{ id: 'waterProjectNaraget', label: '나라장터' }],
+  },
+  {
+    id: 'pe-liner-cost',
+    label: 'PE라이너 비용계산',
+    children: [{ id: 'cost-calculation', label: '비용계산' }],
+  },
+  {
+    id: 'unit-price-sheet',
+    label: '일위대가',
+    children: [
+      { id: 'unit-price-list', label: '일위대가 목록' },
+      { id: 'unit-price-table-hopyo', label: '일위대가 호표' },
+      { id: 'unit-price-table-sangeun', label: '일위대가 산근' },
+    ],
+  },
+  {
+    id: 'equipment-usage',
+    label: '중기사용',
+    children: [
+      { id: 'equipment-usage-list', label: '중기사용목록' },
+      { id: 'equipment-usage-fee', label: '중기사용료' },
+      { id: 'equipment-base-data', label: '중기기초자료' },
+    ],
+  },
+  {
+    id: 'base-data',
+    label: '기초정보 데이터',
+    children: [
+      { id: 'material-data', label: '자재데이터' },
+      { id: 'labor-data', label: '노임데이터' },
+    ],
+  },
+];
 
-  const toggleMenu = (menu: string) => {
-    setOpenMenus(prev =>
-      prev.includes(menu)
-        ? prev.filter(m => m !== menu)
-        : [...prev, menu]
-    );
+const MenuItemComponent = ({ item, activeMenu, onMenuSelect, depth = 0 }: MenuItemProps) => {
+  const [isOpen, setIsOpen] = useState(true);
+  const hasChildren = item.children && item.children.length > 0;
+
+  const handleSelect = () => {
+    if (!hasChildren) {
+      onMenuSelect(item.id);
+    } else {
+      setIsOpen(!isOpen);
+    }
   };
 
-  // 공통 스타일 정의
-  const menuHeaderStyles = (menu: string) => `
-    w-full flex items-center justify-between px-3 py-2 rounded-md transition-colors
-    ${openMenus.includes(menu) 
-      ? 'bg-blue-50 text-blue-700' 
-      : 'text-gray-700 hover:bg-gray-50'}
-  `;
+  const isActive = activeMenu === item.id;
+  const isParentActive = hasChildren && item.children?.some(child => child.id === activeMenu);
 
-  const submenuStyles = (isActive: boolean) => `
-    w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors
+  // 공통 스타일 정의
+  const menuHeaderStyles = `
+    w-full flex items-center justify-between px-3 py-2 rounded-md transition-colors cursor-pointer
     ${isActive 
       ? 'bg-blue-100 text-blue-700 font-medium' 
-      : 'text-gray-600 hover:bg-gray-50'}
-  `;
-
-  const arrowStyles = (menu: string) => `
-    w-4 h-4 transform transition-transform
-    ${openMenus.includes(menu) ? 'rotate-180' : ''}
+      : isParentActive 
+        ? 'bg-blue-50 text-blue-700 font-medium'
+        : 'text-gray-700 hover:bg-gray-50'}
   `;
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="space-y-1">
-        {/* 상수도공사 발주계획 */}
-        <div>
-          <button
-            onClick={() => toggleMenu('waterProject')}
-            className={menuHeaderStyles('waterProject')}
+    <div className="space-y-1" style={{ paddingLeft: `${depth * 12}px` }}>
+      <div
+        onClick={handleSelect}
+        className={menuHeaderStyles}
+      >
+        <span>{item.label}</span>
+        {hasChildren && (
+          <svg
+            className={`w-4 h-4 transform transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
           >
-            <span className="font-medium">상수도공사 발주계획</span>
-            <svg
-              className={arrowStyles('waterProject')}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          {openMenus.includes('waterProject') && (
-            <div className="ml-3 mt-1 space-y-1">
-              <button
-                onClick={() => onMenuSelect('waterProjectNaraget')}
-                className={submenuStyles(activeMenu === 'waterProjectNaraget')}
-              >
-                나라장터
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* PE라이너 */}
-        <div>
-          <button
-            onClick={() => toggleMenu('peLiner')}
-            className={menuHeaderStyles('peLiner')}
-          >
-            <span className="font-medium">PE라이너</span>
-            <svg
-              className={arrowStyles('peLiner')}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          {openMenus.includes('peLiner') && (
-            <div className="ml-3 mt-1 space-y-1">
-              {/* 기초정보 데이터 관리 */}
-              <div>
-                <button
-                  onClick={() => toggleMenu('peLinerBase')}
-                  className={menuHeaderStyles('peLinerBase')}
-                >
-                  <span className="font-medium">기초정보 데이터 관리</span>
-                  <svg
-                    className={arrowStyles('peLinerBase')}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {openMenus.includes('peLinerBase') && (
-                  <div className="ml-3 mt-1 space-y-1">
-                    <button
-                      onClick={() => onMenuSelect('baseDataUpload')}
-                      className={submenuStyles(activeMenu === 'baseDataUpload')}
-                    >
-                      데이터 업로드
-                    </button>
-                    <button
-                      onClick={() => onMenuSelect('baseDataMachine')}
-                      className={submenuStyles(activeMenu === 'baseDataMachine')}
-                    >
-                      중기기초자료
-                    </button>
-                    <button
-                      onClick={() => onMenuSelect('baseDataMaterial')}
-                      className={submenuStyles(activeMenu === 'baseDataMaterial')}
-                    >
-                      자재 데이터
-                    </button>
-                    <button
-                      onClick={() => onMenuSelect('baseDataLabor')}
-                      className={submenuStyles(activeMenu === 'baseDataLabor')}
-                    >
-                      노임 데이터
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* 수량정보 데이터관리 */}
-              <div>
-                <button
-                  onClick={() => toggleMenu('peLinerQuantity')}
-                  className={menuHeaderStyles('peLinerQuantity')}
-                >
-                  <span className="font-medium">수량정보 데이터관리</span>
-                  <svg
-                    className={arrowStyles('peLinerQuantity')}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {openMenus.includes('peLinerQuantity') && (
-                  <div className="ml-3 mt-1 space-y-1">
-                    <button
-                      onClick={() => onMenuSelect('peLinerDataUpload')}
-                      className={submenuStyles(activeMenu === 'peLinerDataUpload')}
-                    >
-                      데이터 업로드
-                    </button>
-                    <button
-                      onClick={() => onMenuSelect('baseDataMachinery')}
-                      className={submenuStyles(activeMenu === 'baseDataMachinery')}
-                    >
-                      중기사용료
-                    </button>
-                    <button
-                      onClick={() => onMenuSelect('peLinerDataUnitPriceSheet')}
-                      className={submenuStyles(activeMenu === 'peLinerDataUnitPriceSheet')}
-                    >
-                      일위대가_호표
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* PE라이너 비용계산 */}
-              <div>
-                <button
-                  onClick={() => toggleMenu('peLinerCalc')}
-                  className={menuHeaderStyles('peLinerCalc')}
-                >
-                  <span className="font-medium">PE라이너 비용계산</span>
-                  <svg
-                    className={arrowStyles('peLinerCalc')}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {openMenus.includes('peLinerCalc') && (
-                  <div className="ml-3 mt-1 space-y-1">
-                    <button
-                      onClick={() => onMenuSelect('newCalculation')}
-                      className={submenuStyles(activeMenu === 'newCalculation')}
-                    >
-                      새 계산
-                    </button>
-                    <button
-                      onClick={() => onMenuSelect('dashboard')}
-                      className={submenuStyles(activeMenu === 'dashboard')}
-                    >
-                      계산 결과 대시보드
-                    </button>
-                    <button
-                      onClick={() => onMenuSelect('peLinerDataUnitPriceList')}
-                      className={submenuStyles(activeMenu === 'peLinerDataUnitPriceList')}
-                    >
-                      일위대가목록
-                    </button>
-                    <button
-                      onClick={() => onMenuSelect('peLinerDataMachineryUsage')}
-                      className={submenuStyles(activeMenu === 'peLinerDataMachineryUsage')}
-                    >
-                      중기사용목록
-                    </button>
-                    <button
-                      onClick={() => onMenuSelect('peLinerCalcDocument')}
-                      className={submenuStyles(activeMenu === 'peLinerCalcDocument')}
-                    >
-                      내역서 만들기
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        )}
       </div>
+      {hasChildren && isOpen && item.children && (
+        <div className="mt-1 ml-2 space-y-1">
+          {item.children.map(child => (
+            <MenuItemComponent key={child.id} item={child} activeMenu={activeMenu} onMenuSelect={onMenuSelect} depth={depth + 1} />
+          ))}
+        </div>
+      )}
     </div>
   );
 };
 
-export default MenuTree; 
+export default function MenuTree({ activeMenu, onMenuSelect }: MenuTreeProps) {
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="space-y-1">
+        {menuData.map(item => (
+          <MenuItemComponent key={item.id} item={item} activeMenu={activeMenu} onMenuSelect={onMenuSelect} />
+        ))}
+      </div>
+    </div>
+  );
+} 
