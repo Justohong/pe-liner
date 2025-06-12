@@ -190,10 +190,10 @@ const MenuTree: React.FC<MenuTreeProps> = ({ activeMenu, onMenuSelect }) => {
                 {openMenus.includes('peLinerCalc') && (
                   <div className="ml-3 mt-1 space-y-1">
                     <button
-                      onClick={() => onMenuSelect('calculator')}
-                      className={submenuStyles(activeMenu === 'calculator')}
+                      onClick={() => onMenuSelect('newCalculation')}
+                      className={submenuStyles(activeMenu === 'newCalculation')}
                     >
-                      자동 계산기
+                      새 계산
                     </button>
                     <button
                       onClick={() => onMenuSelect('dashboard')}

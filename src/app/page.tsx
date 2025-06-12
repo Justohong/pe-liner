@@ -1,70 +1,42 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useCalculationStore } from '@/store/calculationStore';
 import MenuTree from '@/components/common/MenuTree';
-import FileUpload from '@/components/baseData/FileUpload';
-import MachineryTable from '@/components/quantityData/MachineryTable';
-import MachineBaseTable from '@/components/baseData/MachineBaseTable';
+import { CalculatorForm } from '@/components/calculation/CalculatorForm';
 import MaterialTable from '@/components/baseData/MaterialTable';
 import LaborTable from '@/components/baseData/LaborTable';
-import DataUploader from '@/components/quantityData/DataUploader';
-import UnitPriceSheetTable, { GroupData } from '@/components/quantityData/UnitPriceSheetTable';
+import MachineryTable from '@/components/quantityData/MachineryTable';
+import UnitPriceSheetTable from '@/components/quantityData/UnitPriceSheetTable';
 import UnitPriceListTable from '@/components/DocumentGenerator/UnitPriceListTable';
 import MachineryUsageTable from '@/components/DocumentGenerator/MachineryUsageTable';
 import PriceDocumentGenerator from '@/components/DocumentGenerator/PriceDocumentGenerator';
 import NaragetTable from '@/components/waterProject/NaragetTable';
+import FileUpload from '@/components/baseData/FileUpload';
+import MachineBaseTable from '@/components/baseData/MachineBaseTable';
+import DataUploader from '@/components/quantityData/DataUploader';
 import { db } from '@/utils/db';
 import { sessionStore } from '@/utils/sessionStore';
-import { useCalculationStore } from '@/store/calculationStore';
-import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 export default function Home() {
-  const { result } = useCalculationStore(); // Zustand 스토어에서 계산 결과 가져오기
-  const router = useRouter();
-  const [activeMenu, setActiveMenu] = useState<string>('dashboard'); // 기본 메뉴를 대시보드로 설정
+  const { result, clearResult } = useCalculationStore();
+  const [activeMenu, setActiveMenu] = useState<string>('newCalculation');
   const [uploadedData, setUploadedData] = useState<any>(null);
   const [dbSaveResult, setDbSaveResult] = useState<any>(null);
   const [isDataLoaded, setIsDataLoaded] = useState<boolean>(false);
   // PE라이너 데이터 생성 관련 상태
   const [peLinerData, setPeLinerData] = useState<any>(null);
   // 일위대가_호표 그룹 데이터 (일위대가목록과 공유)
-  const [unitPriceGroups, setUnitPriceGroups] = useState<GroupData[]>([]);
-
-  // 페이지 로드시 sessionStorage 초기화 및 DB 데이터 확인
-  useEffect(() => {
-    // 새로고침 시 sessionStorage 데이터 초기화
-    if (typeof window !== 'undefined') {
-      try {
-        sessionStore.clearSessionData();
-        console.log('페이지 로드 시 sessionStorage 데이터가 초기화되었습니다.');
-      } catch (error) {
-        console.error('sessionStorage 초기화 중 오류:', error);
-      }
-    }
-    
-    // DB에 저장된 데이터 확인
-    const machineryCount = db.getMachineryData().length;
-    const machineBaseCount = db.getMachineBaseData().length;
-    const materialCount = db.getMaterialData().length;
-    const laborCount = db.getLaborData().length;
-    
-    const totalCount = machineryCount + machineBaseCount + materialCount + laborCount;
-    setIsDataLoaded(totalCount > 0);
-    
-    console.log('DB 로드 결과:', {
-      machineryCount,
-      machineBaseCount, 
-      materialCount,
-      laborCount,
-      isDataLoaded: totalCount > 0
-    });
-  }, []);
+  const [unitPriceGroups, setUnitPriceGroups] = useState<any[]>([]);
 
   const handleMenuSelect = (menu: string) => {
-    if (menu === 'calculator') {
-      router.push('/calculator');
+    if (menu === 'newCalculation') {
+      if (confirm('새로운 계산을 시작하시겠습니까? 현재 계산 결과는 사라집니다.')) {
+        clearResult();
+        setActiveMenu('newCalculation');
+      }
     } else {
       setActiveMenu(menu);
     }
@@ -98,21 +70,33 @@ export default function Home() {
   };
 
   // 일위대가_호표 그룹 데이터 업데이트 핸들러
-  const handleUnitPriceGroupsUpdate = (groups: GroupData[]) => {
+  const handleUnitPriceGroupsUpdate = (groups: any[]) => {
     console.log('일위대가_호표 그룹 데이터 업데이트:', groups.length);
     setUnitPriceGroups(groups);
   };
 
-  // 현재 메뉴에 따라 적절한 컴포넌트 렌더링
   const renderContent = () => {
+    if (activeMenu === 'newCalculation') {
+      return (
+        <Card className="w-full">
+          <CardHeader>
+            <CardTitle className="text-2xl">PE-Liner 공사비 자동 산출</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CalculatorForm />
+          </CardContent>
+        </Card>
+      );
+    }
+
     // 대시보드 메뉴 (계산 결과 표시)
     if (activeMenu === 'dashboard') {
       if (!result) {
         return (
           <div className="text-center p-8">
-            <p className="text-gray-600 mb-4">계산된 결과가 없습니다. 먼저 '자동 계산기' 메뉴에서 공사비를 계산해주세요.</p>
-            <Button onClick={() => router.push('/calculator')} className="bg-blue-600 hover:bg-blue-700">
-              계산기로 이동
+            <p className="text-gray-600 mb-4">계산된 결과가 없습니다. 먼저 '새 계산' 메뉴에서 공사비를 계산해주세요.</p>
+            <Button onClick={() => setActiveMenu('newCalculation')} className="bg-blue-600 hover:bg-blue-700">
+              새 계산 시작하기
             </Button>
           </div>
         );
@@ -185,10 +169,10 @@ export default function Home() {
           </div>
           
           <Button 
-            onClick={() => router.push('/calculator')}
+            onClick={() => setActiveMenu('newCalculation')}
             className="w-full bg-gray-600 hover:bg-gray-700 h-auto py-4"
           >
-            계산기로 돌아가기
+            새 계산 시작하기
           </Button>
         </div>
       );
@@ -297,28 +281,16 @@ export default function Home() {
       }
       
       // 계산 결과가 없거나 장비비 항목이 없는 경우 기존 로직 사용
-      console.log('중기사용료 페이지 데이터 확인:', {
-        uploadedData: uploadedData?.machinery ? '있음' : '없음',
-        peLinerData: peLinerData ? '있음' : '없음',
-        peLinerDataStructure: peLinerData?.data ? Object.keys(peLinerData.data) : '없음',
-        중기사용료: peLinerData?.data?.['중기사용료'] ? '있음' : '없음'
-      });
-      
       if (uploadedData?.machinery || (peLinerData?.data?.['중기사용료']?.rowData)) {
         // 엑셀에서 업로드된 중기사용료 데이터를 사용
         const machineryData = uploadedData?.machinery || peLinerData?.data?.['중기사용료']?.rowData || [];
-        console.log('중기사용료 데이터 전달:', {
-          dataSource: uploadedData?.machinery ? 'uploadedData' : 'peLinerData',
-          dataLength: machineryData.length,
-          sampleData: machineryData.slice(0, 3)
-        });
         return <MachineryTable data={machineryData} />;
       } else {
         return (
           <div className="text-center p-8">
-            <p className="text-gray-600">장비비 데이터가 없습니다. '자동 계산기' 메뉴에서 먼저 계산을 수행하거나, 수량정보 데이터관리 &gt; 데이터 업로드 메뉴에서 중기사용료 시트가 포함된 엑셀 파일을 업로드해주세요.</p>
-            <Button onClick={() => router.push('/calculator')} className="mt-4 bg-blue-600 hover:bg-blue-700">
-              계산기로 이동
+            <p className="text-gray-600">장비비 데이터가 없습니다. '새 계산' 메뉴에서 먼저 계산을 수행하거나, 수량정보 데이터관리 &gt; 데이터 업로드 메뉴에서 중기사용료 시트가 포함된 엑셀 파일을 업로드해주세요.</p>
+            <Button onClick={() => setActiveMenu('newCalculation')} className="mt-4 bg-blue-600 hover:bg-blue-700">
+              새 계산 시작하기
             </Button>
           </div>
         );
@@ -366,9 +338,9 @@ export default function Home() {
       } else {
         return (
           <div className="text-center p-8">
-            <p className="text-gray-600">자재 데이터가 없습니다. '자동 계산기' 메뉴에서 먼저 계산을 수행하거나, 데이터 업로드 메뉴에서 엑셀 파일을 업로드해주세요.</p>
-            <Button onClick={() => router.push('/calculator')} className="mt-4 bg-blue-600 hover:bg-blue-700">
-              계산기로 이동
+            <p className="text-gray-600">자재 데이터가 없습니다. '새 계산' 메뉴에서 먼저 계산을 수행하거나, 데이터 업로드 메뉴에서 엑셀 파일을 업로드해주세요.</p>
+            <Button onClick={() => setActiveMenu('newCalculation')} className="mt-4 bg-blue-600 hover:bg-blue-700">
+              새 계산 시작하기
             </Button>
           </div>
         );
@@ -401,9 +373,9 @@ export default function Home() {
       } else {
         return (
           <div className="text-center p-8">
-            <p className="text-gray-600">노임 데이터가 없습니다. '자동 계산기' 메뉴에서 먼저 계산을 수행하거나, 데이터 업로드 메뉴에서 엑셀 파일을 업로드해주세요.</p>
-            <Button onClick={() => router.push('/calculator')} className="mt-4 bg-blue-600 hover:bg-blue-700">
-              계산기로 이동
+            <p className="text-gray-600">노임 데이터가 없습니다. '새 계산' 메뉴에서 먼저 계산을 수행하거나, 데이터 업로드 메뉴에서 엑셀 파일을 업로드해주세요.</p>
+            <Button onClick={() => setActiveMenu('newCalculation')} className="mt-4 bg-blue-600 hover:bg-blue-700">
+              새 계산 시작하기
             </Button>
           </div>
         );
@@ -464,9 +436,9 @@ export default function Home() {
         />
       ) : (
         <div className="text-center p-8">
-          <p className="text-gray-600 mb-4">표시할 일위대가_호표표 데이터가 없습니다. '자동 계산기' 메뉴에서 먼저 계산을 수행하거나, 수량정보 데이터관리 &gt; 데이터업로드 메뉴에서 일위대가_호표표 시트가 포함된 엑셀 파일을 업로드해주세요.</p>
-          <Button onClick={() => router.push('/calculator')} className="mt-4 bg-blue-600 hover:bg-blue-700">
-            계산기로 이동
+          <p className="text-gray-600 mb-4">표시할 일위대가_호표표 데이터가 없습니다. '새 계산' 메뉴에서 먼저 계산을 수행하거나, 수량정보 데이터관리 &gt; 데이터업로드 메뉴에서 일위대가_호표표 시트가 포함된 엑셀 파일을 업로드해주세요.</p>
+          <Button onClick={() => setActiveMenu('newCalculation')} className="mt-4 bg-blue-600 hover:bg-blue-700">
+            새 계산 시작하기
           </Button>
         </div>
       );
@@ -487,9 +459,9 @@ export default function Home() {
       return (
         <div>
           <h2 className="text-xl font-semibold mb-4">{activeMenu} 페이지</h2>
-          <p className="text-gray-600 mb-4">먼저 '데이터 업로드' 메뉴에서 엑셀 파일을 업로드하거나, '자동 계산기' 메뉴에서 계산을 수행해주세요.</p>
-          <Button onClick={() => router.push('/calculator')} className="mt-4 bg-blue-600 hover:bg-blue-700">
-            계산기로 이동
+          <p className="text-gray-600 mb-4">먼저 '데이터 업로드' 메뉴에서 엑셀 파일을 업로드하거나, '새 계산' 메뉴에서 계산을 수행해주세요.</p>
+          <Button onClick={() => setActiveMenu('newCalculation')} className="mt-4 bg-blue-600 hover:bg-blue-700">
+            새 계산 시작하기
           </Button>
         </div>
       );
@@ -509,7 +481,7 @@ export default function Home() {
       <header className="bg-white border-b border-gray-200 shadow-sm">
         <div className="px-4 py-3 flex items-center justify-between">
           <h1 className="text-xl font-bold text-blue-700">PE 라이너 관리 시스템</h1>
-          <div className="text-sm text-gray-500">v0.1.0</div>
+          <div className="text-sm text-gray-500">v0.2.0</div>
         </div>
       </header>
       
