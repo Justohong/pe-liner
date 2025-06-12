@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 
-// 메뉴 아이템 타입 정의
 interface MenuItem {
   id: string;
   label: string;
@@ -20,56 +19,33 @@ interface MenuTreeProps {
   onMenuSelect: (menuId: string) => void;
 }
 
-// 메뉴 데이터 구조 정의
 export const menuData: MenuItem[] = [
   {
-    id: 'waterProject',
-    label: '상수도공사 발주계획',
-    children: [{ id: 'waterProjectNaraget', label: '나라장터' }],
-  },
-  {
-    id: 'pe-liner-cost',
+    id: 'calculation_group',
     label: 'PE라이너 비용계산',
     children: [{ id: 'cost-calculation', label: '비용계산' }],
   },
   {
-    id: 'unit-price-sheet',
-    label: '일위대가',
+    id: 'document_group',
+    label: '산출 문서',
     children: [
-      { id: 'unit-price-list', label: '일위대가 목록' },
-      { id: 'unit-price-table-hopyo', label: '일위대가 호표' },
-      { id: 'unit-price-table-sangeun', label: '일위대가 산근' },
+        { id: 'bill-of-statement', label: '내역서' },
+        { id: 'unit-price-sheet-hopyo', label: '일위대가 호표' },
+        { id: 'overhead-summary', label: '경비 내역' },
     ],
   },
   {
-    id: 'equipment-usage',
-    label: '중기사용',
+    id: 'data_group',
+    label: '기초 데이터',
     children: [
-      { id: 'equipment-usage-list', label: '중기사용목록' },
-      { id: 'equipment-usage-fee', label: '중기사용료' },
-      { id: 'equipment-base-data', label: '중기기초자료' },
-    ],
-  },
-  {
-    id: 'base-data',
-    label: '기초정보 데이터',
-    children: [
-      { id: 'material-data', label: '자재데이터' },
-      { id: 'labor-data', label: '노임데이터' },
-      { id: 'overhead-data', label: '경비' },
-    ],
-  },
-  {
-    id: 'documents',
-    label: '문서',
-    children: [
-      { id: 'hopyo-document', label: '일위대가 호표' },
-      { id: 'overhead-document', label: '경비 내역' },
+      { id: 'material-data', label: '자재 데이터' },
+      { id: 'labor-data', label: '노임 데이터' },
+      { id: 'equipment-data', label: '중기사용료' },
     ],
   },
 ];
 
-const MenuItemComponent = ({ item, activeMenu, onMenuSelect, depth = 0 }: MenuItemProps) => {
+const MenuItem = ({ item, activeMenu, onMenuSelect, depth = 0 }: MenuItemProps) => {
   const [isOpen, setIsOpen] = useState(true);
   const hasChildren = item.children && item.children.length > 0;
 
@@ -82,41 +58,15 @@ const MenuItemComponent = ({ item, activeMenu, onMenuSelect, depth = 0 }: MenuIt
   };
 
   const isActive = activeMenu === item.id;
-  const isParentActive = hasChildren && item.children?.some(child => child.id === activeMenu);
-
-  // 공통 스타일 정의
-  const menuHeaderStyles = `
-    w-full flex items-center justify-between px-3 py-2 rounded-md transition-colors cursor-pointer
-    ${isActive 
-      ? 'bg-blue-100 text-blue-700 font-medium' 
-      : isParentActive 
-        ? 'bg-blue-50 text-blue-700 font-medium'
-        : 'text-gray-700 hover:bg-gray-50'}
-  `;
-
   return (
-    <div className="space-y-1" style={{ paddingLeft: `${depth * 12}px` }}>
-      <div
-        onClick={handleSelect}
-        className={menuHeaderStyles}
-      >
-        <span>{item.label}</span>
-        {hasChildren && (
-          <svg
-            className={`w-4 h-4 transform transition-transform ${isOpen ? 'rotate-180' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        )}
+    <div style={{ paddingLeft: `${depth * 16}px` }}>
+      <div onClick={handleSelect} className={`p-2 rounded cursor-pointer ${isActive ? 'bg-blue-500 text-white' : 'hover:bg-gray-100'}`}>
+        <span className={!hasChildren ? '' : 'font-bold'}>{item.label}</span>
+        {hasChildren && <span className="float-right">{isOpen ? '▼' : '▶'}</span>}
       </div>
-      {hasChildren && isOpen && item.children && (
-        <div className="mt-1 ml-2 space-y-1">
-          {item.children.map(child => (
-            <MenuItemComponent key={child.id} item={child} activeMenu={activeMenu} onMenuSelect={onMenuSelect} depth={depth + 1} />
-          ))}
+      {hasChildren && isOpen && (
+        <div className="mt-1 space-y-1">
+          {item.children.map(child => <MenuItem key={child.id} item={child} activeMenu={activeMenu} onMenuSelect={onMenuSelect} depth={depth + 1} />)}
         </div>
       )}
     </div>
@@ -125,12 +75,11 @@ const MenuItemComponent = ({ item, activeMenu, onMenuSelect, depth = 0 }: MenuIt
 
 export default function MenuTree({ activeMenu, onMenuSelect }: MenuTreeProps) {
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="space-y-1">
-        {menuData.map(item => (
-          <MenuItemComponent key={item.id} item={item} activeMenu={activeMenu} onMenuSelect={onMenuSelect} />
-        ))}
-      </div>
-    </div>
+    <aside className="w-64 bg-gray-50 p-4 border-r flex-shrink-0">
+      <h2 className="text-lg font-bold mb-4">PE-Liner v1.0</h2>
+      <nav className="space-y-2">
+        {menuData.map(item => <MenuItem key={item.id} item={item} activeMenu={activeMenu} onMenuSelect={onMenuSelect} />)}
+      </nav>
+    </aside>
   );
 } 
