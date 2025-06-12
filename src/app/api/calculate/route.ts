@@ -39,10 +39,10 @@ export async function POST(req: Request) {
 
     // 결과 반환
     return NextResponse.json(result);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('계산 중 오류 발생:', error);
     return NextResponse.json(
-      { error: error.message || '계산 중 오류가 발생했습니다.' },
+      { error: error instanceof Error ? error.message : '계산 중 오류가 발생했습니다.' },
       { status: 500 }
     );
   }

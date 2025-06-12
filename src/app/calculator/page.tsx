@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useDebouncedCallback } from 'use-debounce';
-import { Button } from '@/components/ui/button';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { useCalculationStore } from '@/store/calculationStore';
 
 // API 응답 결과에 대한 상세 타입을 정의합니다.
 interface CalculationResult {
@@ -25,20 +27,32 @@ interface CalculationResult {
   }[];
 }
 
+// API 호출 옵션 타입 정의
+interface CalculationOptions {
+  pipeType: 'steel' | 'ductile';
+  diameter: number;
+  length: number;
+  isRiser: boolean;
+}
+
 export default function CalculatorPage() {
+  const router = useRouter();
+  
+  // Zustand 스토어에서 상태와 액션 가져오기
+  const { result, setCalculationResult } = useCalculationStore();
+
   // 입력 상태
   const [pipeType, setPipeType] = useState<'steel' | 'ductile'>('ductile');
   const [diameter, setDiameter] = useState<number>(150);
   const [length, setLength] = useState<number>(100);
   const [isRiser, setIsRiser] = useState<boolean>(false);
 
-  // 결과 상태
-  const [result, setResult] = useState<CalculationResult | null>(null);
+  // UI 상태
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
   // 디바운스 콜백 함수 생성
-  const debouncedApiCall = useDebouncedCallback(async (options) => {
+  const debouncedApiCall = useDebouncedCallback(async (options: CalculationOptions) => {
     setLoading(true);
     setError(null);
     try {
@@ -53,10 +67,12 @@ export default function CalculatorPage() {
         throw new Error(errorData.error || '계산 중 오류가 발생했습니다.');
       }
       const calculationResult = await response.json();
-      setResult(calculationResult);
-    } catch (e: any) {
-      setError(e.message);
-      setResult(null);
+      
+      // 계산 결과를 Zustand 스토어에 저장
+      setCalculationResult(calculationResult);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '계산 중 오류가 발생했습니다.');
+      setCalculationResult(null);
     } finally {
       setLoading(false);
     }
@@ -70,6 +86,11 @@ export default function CalculatorPage() {
     }
   }, [pipeType, diameter, length, isRiser, debouncedApiCall]);
 
+  // 결과 페이지로 이동
+  const handleViewDetails = () => {
+    router.push('/result');
+  };
+
   return (
     <div className="container mx-auto p-4 md:p-8">
       <Card className="w-full max-w-4xl mx-auto">
@@ -82,7 +103,12 @@ export default function CalculatorPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div className="space-y-2">
               <Label htmlFor="pipe-type">관종</Label>
-              <select id="pipe-type" value={pipeType} onChange={e => setPipeType(e.target.value as any)} className="w-full p-2 border rounded">
+              <select 
+                id="pipe-type" 
+                value={pipeType} 
+                onChange={e => setPipeType(e.target.value as 'steel' | 'ductile')} 
+                className="w-full p-2 border rounded"
+              >
                 <option value="ductile">주철관</option>
                 <option value="steel">강관</option>
               </select>
@@ -109,7 +135,14 @@ export default function CalculatorPage() {
               <div className="space-y-6">
                 {/* 1. 요약 카드 */}
                 <Card className="bg-gray-50">
-                  <CardHeader><CardTitle>계산 결과 요약</CardTitle></CardHeader>
+                  <CardHeader>
+                    <div className="flex justify-between items-center">
+                      <CardTitle>계산 결과 요약</CardTitle>
+                      <Button onClick={handleViewDetails} variant="outline" size="sm">
+                        상세 결과 보기
+                      </Button>
+                    </div>
+                  </CardHeader>
                   <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                     <div><p className="text-sm text-gray-500">총 공사비</p><p className="font-bold text-xl">{result.totalCost.toLocaleString()} 원</p></div>
                     <div><p className="text-sm text-gray-500">재료비</p><p>{result.directMaterialCost.toLocaleString()} 원</p></div>

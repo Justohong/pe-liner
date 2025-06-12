@@ -15,9 +15,15 @@ import PriceDocumentGenerator from '@/components/DocumentGenerator/PriceDocument
 import NaragetTable from '@/components/waterProject/NaragetTable';
 import { db } from '@/utils/db';
 import { sessionStore } from '@/utils/sessionStore';
+import { useCalculationStore } from '@/store/calculationStore';
+import { useRouter } from 'next/navigation';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 export default function Home() {
-  const [activeMenu, setActiveMenu] = useState<string>('baseDataUpload');
+  const { result } = useCalculationStore(); // Zustand 스토어에서 계산 결과 가져오기
+  const router = useRouter();
+  const [activeMenu, setActiveMenu] = useState<string>('dashboard'); // 기본 메뉴를 대시보드로 설정
   const [uploadedData, setUploadedData] = useState<any>(null);
   const [dbSaveResult, setDbSaveResult] = useState<any>(null);
   const [isDataLoaded, setIsDataLoaded] = useState<boolean>(false);
@@ -57,7 +63,11 @@ export default function Home() {
   }, []);
 
   const handleMenuSelect = (menu: string) => {
-    setActiveMenu(menu);
+    if (menu === 'calculator') {
+      router.push('/calculator');
+    } else {
+      setActiveMenu(menu);
+    }
   };
 
   const handleDataLoad = (result: { success: boolean; data?: any; message?: string; dbResult?: any }) => {
@@ -95,7 +105,95 @@ export default function Home() {
 
   // 현재 메뉴에 따라 적절한 컴포넌트 렌더링
   const renderContent = () => {
-    if (activeMenu === 'waterProjectNaraget') {
+    // 대시보드 메뉴 (계산 결과 표시)
+    if (activeMenu === 'dashboard') {
+      if (!result) {
+        return (
+          <div className="text-center p-8">
+            <p className="text-gray-600 mb-4">계산된 결과가 없습니다. 먼저 '자동 계산기' 메뉴에서 공사비를 계산해주세요.</p>
+            <Button onClick={() => router.push('/calculator')} className="bg-blue-600 hover:bg-blue-700">
+              계산기로 이동
+            </Button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-6">
+          <h2 className="text-2xl font-bold">PE 라이너 공사비 계산 결과</h2>
+          
+          {/* 요약 카드 */}
+          <Card className="bg-gray-50">
+            <CardHeader>
+              <CardTitle>계산 결과 요약</CardTitle>
+              <CardDescription>최종 계산된 공사비 정보입니다.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+              <div>
+                <p className="text-sm text-gray-500">총 공사비</p>
+                <p className="font-bold text-xl">{result.totalCost.toLocaleString()} 원</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">재료비</p>
+                <p>{result.directMaterialCost.toLocaleString()} 원</p>
+                <p className="text-xs text-gray-400">
+                  ({((result.directMaterialCost / result.totalCost) * 100).toFixed(1)}%)
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">노무비</p>
+                <p>{result.directLaborCost.toLocaleString()} 원</p>
+                <p className="text-xs text-gray-400">
+                  ({((result.directLaborCost / result.totalCost) * 100).toFixed(1)}%)
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">장비비</p>
+                <p>{result.directEquipmentCost.toLocaleString()} 원</p>
+                <p className="text-xs text-gray-400">
+                  ({((result.directEquipmentCost / result.totalCost) * 100).toFixed(1)}%)
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Button 
+              onClick={() => setActiveMenu('baseDataMaterial')}
+              className="bg-blue-600 hover:bg-blue-700 h-auto py-4"
+            >
+              자재 상세 보기
+            </Button>
+            <Button 
+              onClick={() => setActiveMenu('baseDataLabor')}
+              className="bg-green-600 hover:bg-green-700 h-auto py-4"
+            >
+              노무비 상세 보기
+            </Button>
+            <Button 
+              onClick={() => setActiveMenu('baseDataMachinery')}
+              className="bg-amber-600 hover:bg-amber-700 h-auto py-4"
+            >
+              장비비 상세 보기
+            </Button>
+            <Button 
+              onClick={() => setActiveMenu('peLinerDataUnitPriceSheet')}
+              className="bg-purple-600 hover:bg-purple-700 h-auto py-4"
+            >
+              일위대가표 보기
+            </Button>
+          </div>
+          
+          <Button 
+            onClick={() => router.push('/calculator')}
+            className="w-full bg-gray-600 hover:bg-gray-700 h-auto py-4"
+          >
+            계산기로 돌아가기
+          </Button>
+        </div>
+      );
+    }
+    else if (activeMenu === 'waterProjectNaraget') {
       return <NaragetTable />;
     }
     else if (activeMenu === 'baseDataUpload') {
@@ -180,7 +278,25 @@ export default function Home() {
         </div>
       );
     } else if (activeMenu === 'baseDataMachinery') {
-      // 중기사용료 데이터 표시 - DB에서 가져오지 않고 일위대가_호표와 같은 형태로 처리
+      if (result) {
+        // 계산 결과가 있으면, lineItems에서 장비비만 필터링하여 전달
+        const equipmentData = result.lineItems.filter(item => item.type === 'equipment');
+        if (equipmentData.length > 0) {
+          // 장비비 데이터를 MachineryTable 형식에 맞게 변환
+          const formattedData = equipmentData.map(item => ({
+            '중기사용료': item.itemName,
+            '__EMPTY': '', // 규격
+            '__EMPTY_1': item.unit, // 단위
+            '__EMPTY_2': item.unitPrice, // 단가
+            '__EMPTY_3': '', // 비고
+            'quantity': item.quantity,
+            'totalPrice': item.totalPrice
+          }));
+          return <MachineryTable data={formattedData} />;
+        }
+      }
+      
+      // 계산 결과가 없거나 장비비 항목이 없는 경우 기존 로직 사용
       console.log('중기사용료 페이지 데이터 확인:', {
         uploadedData: uploadedData?.machinery ? '있음' : '없음',
         peLinerData: peLinerData ? '있음' : '없음',
@@ -200,7 +316,10 @@ export default function Home() {
       } else {
         return (
           <div className="text-center p-8">
-            <p className="text-gray-600">중기사용료 데이터가 없습니다. 수량정보 데이터관리 &gt; 데이터 업로드 메뉴에서 중기사용료 시트가 포함된 엑셀 파일을 업로드해주세요.</p>
+            <p className="text-gray-600">장비비 데이터가 없습니다. '자동 계산기' 메뉴에서 먼저 계산을 수행하거나, 수량정보 데이터관리 &gt; 데이터 업로드 메뉴에서 중기사용료 시트가 포함된 엑셀 파일을 업로드해주세요.</p>
+            <Button onClick={() => router.push('/calculator')} className="mt-4 bg-blue-600 hover:bg-blue-700">
+              계산기로 이동
+            </Button>
           </div>
         );
       }
@@ -220,32 +339,72 @@ export default function Home() {
         );
       }
     } else if (activeMenu === 'baseDataMaterial') {
-      // DB에서 자재데이터를 가져와서 표시 (DB에 저장된 데이터가 있는 경우)
+      if (result) {
+        // 계산 결과가 있으면, lineItems에서 자재만 필터링하여 전달
+        const materialData = result.lineItems.filter(item => item.type === 'material');
+        if (materialData.length > 0) {
+          // 자재 데이터를 MaterialTable 형식에 맞게 변환
+          const formattedData = materialData.map(item => ({
+            '자재': item.itemName,
+            '__EMPTY': '', // 규격
+            '__EMPTY_1': item.unit, // 단위
+            '__EMPTY_2': item.unitPrice, // 단가
+            '__EMPTY_3': '', // 비고
+            'quantity': item.quantity,
+            'totalPrice': item.totalPrice
+          }));
+          return <MaterialTable data={formattedData} />;
+        }
+      }
+      
+      // 계산 결과가 없거나 자재 항목이 없는 경우 기존 로직 사용
       const materialData = db.getMaterialData();
       if (materialData.length > 0) {
-        // 기존 엑셀 레이아웃으로 표시 (MaterialTable 컴포넌트 사용)
         return <MaterialTable data={materialData} />;
       } else if (uploadedData?.material) {
         return <MaterialTable data={uploadedData.material} />;
       } else {
         return (
           <div className="text-center p-8">
-            <p className="text-gray-600">자재 데이터가 없습니다. 데이터 업로드 메뉴에서 엑셀 파일을 업로드해주세요.</p>
+            <p className="text-gray-600">자재 데이터가 없습니다. '자동 계산기' 메뉴에서 먼저 계산을 수행하거나, 데이터 업로드 메뉴에서 엑셀 파일을 업로드해주세요.</p>
+            <Button onClick={() => router.push('/calculator')} className="mt-4 bg-blue-600 hover:bg-blue-700">
+              계산기로 이동
+            </Button>
           </div>
         );
       }
     } else if (activeMenu === 'baseDataLabor') {
-      // DB에서 노임데이터를 가져와서 표시 (DB에 저장된 데이터가 있는 경우)
+      if (result) {
+        // 계산 결과가 있으면, lineItems에서 노무비만 필터링하여 전달
+        const laborData = result.lineItems.filter(item => item.type === 'labor');
+        if (laborData.length > 0) {
+          // 노무비 데이터를 LaborTable 형식에 맞게 변환
+          const formattedData = laborData.map(item => ({
+            '노임': item.itemName,
+            '__EMPTY': '', // 규격
+            '__EMPTY_1': item.unit, // 단위
+            '__EMPTY_2': item.unitPrice, // 단가
+            '__EMPTY_3': '', // 비고
+            'quantity': item.quantity,
+            'totalPrice': item.totalPrice
+          }));
+          return <LaborTable data={formattedData} />;
+        }
+      }
+      
+      // 계산 결과가 없거나 노무비 항목이 없는 경우 기존 로직 사용
       const laborData = db.getLaborData();
       if (laborData.length > 0) {
-        // 기존 엑셀 레이아웃으로 표시 (LaborTable 컴포넌트 사용)
         return <LaborTable data={laborData} />;
       } else if (uploadedData?.labor) {
         return <LaborTable data={uploadedData.labor} />;
       } else {
         return (
           <div className="text-center p-8">
-            <p className="text-gray-600">노임 데이터가 없습니다. 데이터 업로드 메뉴에서 엑셀 파일을 업로드해주세요.</p>
+            <p className="text-gray-600">노임 데이터가 없습니다. '자동 계산기' 메뉴에서 먼저 계산을 수행하거나, 데이터 업로드 메뉴에서 엑셀 파일을 업로드해주세요.</p>
+            <Button onClick={() => router.push('/calculator')} className="mt-4 bg-blue-600 hover:bg-blue-700">
+              계산기로 이동
+            </Button>
           </div>
         );
       }
@@ -255,6 +414,49 @@ export default function Home() {
       return <DataUploader onDataLoad={handlePeLinerDataLoad} />;
     } 
     else if (activeMenu === 'peLinerDataUnitPriceSheet') {
+      if (result) {
+        // 계산 결과가 있으면, 모든 lineItems을 일위대가표 형식으로 표시
+        // UnitPriceSheetTable 컴포넌트가 lineItems 형식을 직접 받을 수 없으므로
+        // 여기서는 단순히 계산 결과가 있다는 안내 메시지를 표시
+        return (
+          <div className="space-y-6">
+            <Card className="bg-blue-50">
+              <CardHeader>
+                <CardTitle>계산 결과 기반 일위대가표</CardTitle>
+                <CardDescription>자동 계산기에서 계산된 결과를 기반으로 한 일위대가표입니다.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-blue-100 border-b">
+                        <th className="px-4 py-2 text-left">구분</th>
+                        <th className="px-4 py-2 text-left">품명</th>
+                        <th className="px-4 py-2 text-right">수량</th>
+                        <th className="px-4 py-2 text-right">단가</th>
+                        <th className="px-4 py-2 text-right">금액</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.lineItems.map((item, index) => (
+                        <tr key={index} className="border-b">
+                          <td className="px-4 py-2">{item.type === 'material' ? '재료비' : item.type === 'labor' ? '노무비' : '장비비'}</td>
+                          <td className="px-4 py-2">{item.itemName}</td>
+                          <td className="px-4 py-2 text-right">{item.quantity.toFixed(2)}</td>
+                          <td className="px-4 py-2 text-right">{item.unitPrice.toLocaleString()}</td>
+                          <td className="px-4 py-2 text-right">{item.totalPrice.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      }
+      
+      // 계산 결과가 없는 경우 기존 로직 사용
       return peLinerData ? (
         <UnitPriceSheetTable 
           data={peLinerData} 
@@ -262,7 +464,10 @@ export default function Home() {
         />
       ) : (
         <div className="text-center p-8">
-          <p className="text-gray-600">표시할 일위대가_호표표 데이터가 없습니다. 수량정보 데이터관리 &gt; 데이터업로드 메뉴에서 일위대가_호표표 시트가 포함된 엑셀 파일을 업로드해주세요.</p>
+          <p className="text-gray-600 mb-4">표시할 일위대가_호표표 데이터가 없습니다. '자동 계산기' 메뉴에서 먼저 계산을 수행하거나, 수량정보 데이터관리 &gt; 데이터업로드 메뉴에서 일위대가_호표표 시트가 포함된 엑셀 파일을 업로드해주세요.</p>
+          <Button onClick={() => router.push('/calculator')} className="mt-4 bg-blue-600 hover:bg-blue-700">
+            계산기로 이동
+          </Button>
         </div>
       );
     }
@@ -278,11 +483,14 @@ export default function Home() {
     else if (activeMenu === 'peLinerCalcDocument') {
       return <PriceDocumentGenerator />;
     }
-    else if (activeMenu.startsWith('baseData') && !uploadedData && !isDataLoaded) {
+    else if (activeMenu.startsWith('baseData') && !uploadedData && !isDataLoaded && !result) {
       return (
         <div>
           <h2 className="text-xl font-semibold mb-4">{activeMenu} 페이지</h2>
-          <p className="text-gray-600">먼저 '데이터 업로드' 메뉴에서 엑셀 파일을 업로드해주세요.</p>
+          <p className="text-gray-600 mb-4">먼저 '데이터 업로드' 메뉴에서 엑셀 파일을 업로드하거나, '자동 계산기' 메뉴에서 계산을 수행해주세요.</p>
+          <Button onClick={() => router.push('/calculator')} className="mt-4 bg-blue-600 hover:bg-blue-700">
+            계산기로 이동
+          </Button>
         </div>
       );
     } else {
