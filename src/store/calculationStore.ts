@@ -33,6 +33,20 @@ export interface CalculationResult {
   totalOverheadCost: number; // 총 간접비
   costsByCategory: CategoryCost[]; // 공종별 비용
   lineItems: LineItem[];
+  summary?: {
+    directCost: {
+      total: number;
+      material: number;
+      labor: number;
+      equipment: number;
+      byCategory: CategoryCost[];
+    };
+    overheadCost: {
+      total: number;
+      items: { itemName: string; amount: number }[];
+    };
+    totalCost: number;
+  };
 }
 
 // 스토어의 상태(state)와 행동(actions)에 대한 타입을 정의합니다.

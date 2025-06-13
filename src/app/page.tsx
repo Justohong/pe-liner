@@ -54,28 +54,36 @@ export default function Home() {
         }
 
         switch (activeMenu) {
-            case 'new-calculation':
-                return <CalculatorForm />;
-            case 'hopyo-document':
+            case 'bill-of-statement':
                 return <div>{title}<BillOfStatement result={result} /></div>;
-            case 'unit-price-sheet':
+            case 'unit-price-sheet-hopyo':
                 return <div>{title}<UnitPriceSheetViewer items={result.lineItems} /></div>;
+            case 'overhead-summary':
+                return <div>{title}<OverheadViewer items={result.overheadDetails || []} /></div>;
+            case 'material-data':
+                return <div>{title}<MaterialTable data={result.lineItems.filter(i => i.type === 'material')} /></div>;
+            case 'labor-data':
+                return <div>{title}<LaborTable data={result.lineItems.filter(i => i.type === 'labor')} /></div>;
+            case 'equipment-data': {
+                const equipmentData = result.lineItems.filter(i => i.type === 'equipment');
+                return <div>{title}<MaterialTable data={equipmentData} /></div>;
+            }
             case 'unit-price-list':
                 return <div>{title}<UnitPriceListDocument items={result.lineItems} /></div>;
             case 'unit-price-table-sangeun':
                 return <div>{title}<UnitPriceSangeunDocument items={result.lineItems} /></div>;
             case 'equipment-usage-list':
                 return <div>{title}<EquipmentUsageListDocument items={result.lineItems} /></div>;
+            case 'new-calculation':
+                return <CalculatorForm />;
+            case 'hopyo-document':
+                return <div>{title}<BillOfStatement result={result} /></div>;
+            case 'unit-price-sheet':
+                return <div>{title}<UnitPriceSheetViewer items={result.lineItems} /></div>;
             case 'overhead-data':
                 return <div>{title}<OverheadViewer items={result.overheadDetails || []} /></div>;
             case 'overhead-document':
                 return <div>{title}<BillOfStatement result={result} /></div>;
-            case 'material-data':
-                return <div>{title}<MaterialTable data={result.lineItems.filter(i => i.type === 'material')} /></div>;
-            case 'labor-data':
-                return <div>{title}<LaborTable data={result.lineItems.filter(i => i.type === 'labor')} /></div>;
-            case 'equipment-data':
-                return <div>{title}<MaterialTable data={result.lineItems.filter(i => i.type === 'equipment')} /></div>;
             default:
                 return <div>{title}<p>이 페이지는 현재 준비 중입니다.</p></div>;
         }
