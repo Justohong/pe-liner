@@ -55,6 +55,24 @@ export interface CalculationResult {
     };
     totalCost: number;
   };
+  detailedSummary?: {
+    byCategory: {
+      categoryName: string;
+      total: number;
+      lineItems: {
+        itemName: string;
+        unit: string;
+        quantity: number;
+        unitPrice: number;
+        totalPrice: number;
+        type: 'material' | 'labor' | 'equipment';
+        workCategory: string;
+      }[];
+    }[];
+    directCost: { total: number; material: number; labor: number; equipment: number };
+    overheadCost: { total: number; items: { itemName: string; amount: number }[] };
+    totalCost: number;
+  };
 }
 
 // --- 2. 핵심 계산 함수 ---
@@ -235,7 +253,19 @@ export async function calculateConstructionCost(options: CalculationOptions): Pr
     totalCost: totalCost,
   };
 
-  // 9. 최종 결과 반환
+  // 9. detailedSummary 객체 조립
+  const detailedSummary = {
+    byCategory: costsByCategory.map(cat => ({
+      categoryName: cat.category,
+      total: cat.materialCost + cat.laborCost + cat.equipmentCost,
+      lineItems: lineItems.filter(item => item.workCategory === cat.category),
+    })),
+    directCost: { total: totalDirectCost, material: directMaterialCost, labor: directLaborCost, equipment: directEquipmentCost },
+    overheadCost: { total: totalOverheadCost, items: overheadDetails },
+    totalCost: totalCost,
+  };
+
+  // 10. 최종 결과 반환
   return {
     totalCost,
     directMaterialCost,
@@ -247,5 +277,6 @@ export async function calculateConstructionCost(options: CalculationOptions): Pr
     costsByCategory,
     lineItems,
     summary,
+    detailedSummary,
   };
 } 

@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface MaterialTableProps {
   data: any[];
+  title?: string;
 }
 
-export default function MaterialTable({ data }: MaterialTableProps) {
+export default function MaterialTable({ data, title }: MaterialTableProps) {
   // 원본 데이터 출력
   console.log('자재 데이터 원본:', data);
 
@@ -23,7 +24,7 @@ export default function MaterialTable({ data }: MaterialTableProps) {
   
   return (
     <div className="w-full space-y-4">
-      <h2 className="text-xl font-semibold">자재</h2>
+      {title && <h2 className="text-xl font-semibold">{title}</h2>}
       
       {processedData.length > 0 ? (
         <Card className="w-full">

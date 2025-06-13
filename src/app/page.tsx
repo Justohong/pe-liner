@@ -60,20 +60,27 @@ export default function Home() {
                 return <div>{title}<UnitPriceSheetViewer items={result.lineItems} /></div>;
             case 'overhead-summary':
                 return <div>{title}<OverheadViewer items={result.overheadDetails || []} /></div>;
-            case 'material-data':
-                return <div>{title}<MaterialTable data={result.lineItems.filter(i => i.type === 'material')} /></div>;
-            case 'labor-data':
-                return <div>{title}<LaborTable data={result.lineItems.filter(i => i.type === 'labor')} /></div>;
-            case 'equipment-data': {
+            case 'material-data': {
+                const materialData = result.lineItems.filter(i => i.type === 'material');
+                return <div>{title}<MaterialTable data={materialData} title={menuLabel} /></div>;
+            }
+            case 'labor-data': {
+                const laborData = result.lineItems.filter(i => i.type === 'labor');
+                return <div>{title}<LaborTable data={laborData} title={menuLabel} /></div>;
+            }
+            case 'equipment-usage-fee':
+            case 'equipment-base-data': {
                 const equipmentData = result.lineItems.filter(i => i.type === 'equipment');
-                return <div>{title}<MaterialTable data={equipmentData} /></div>;
+                return <div>{title}<MaterialTable data={equipmentData} title={menuLabel} /></div>;
             }
             case 'unit-price-list':
                 return <div>{title}<UnitPriceListDocument items={result.lineItems} /></div>;
             case 'unit-price-table-sangeun':
                 return <div>{title}<UnitPriceSangeunDocument items={result.lineItems} /></div>;
-            case 'equipment-usage-list':
-                return <div>{title}<EquipmentUsageListDocument items={result.lineItems} /></div>;
+            case 'equipment-usage-list': {
+                const equipmentList = result.lineItems.filter(i => i.type === 'equipment');
+                return <div>{title}<EquipmentUsageListDocument items={equipmentList} /></div>;
+            }
             case 'new-calculation':
                 return <CalculatorForm />;
             case 'hopyo-document':

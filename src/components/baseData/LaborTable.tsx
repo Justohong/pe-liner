@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface LaborTableProps {
   data: any[];
+  title?: string;
 }
 
-export default function LaborTable({ data }: LaborTableProps) {
+export default function LaborTable({ data, title }: LaborTableProps) {
   // 원본 데이터 출력
   console.log('노임 데이터 원본:', data);
 
@@ -23,7 +24,7 @@ export default function LaborTable({ data }: LaborTableProps) {
   
   return (
     <div className="w-full space-y-4">
-      <h2 className="text-xl font-semibold">노임</h2>
+      {title && <h2 className="text-xl font-semibold">{title}</h2>}
       
       {processedData.length > 0 ? (
         <Card className="w-full">
