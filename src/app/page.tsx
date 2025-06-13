@@ -1,109 +1,112 @@
 'use client';
-
-import { useState } from 'react';
-import { useCalculationStore } from '@/store/calculationStore';
+import { useEffect } from 'react';
 import MenuTree, { menuData } from '@/components/common/MenuTree';
 import { CalculatorForm } from '@/components/calculation/CalculatorForm';
 import BillOfStatement from '@/components/documents/BillOfStatement';
 import UnitPriceSheetViewer from '@/components/documents/UnitPriceSheetViewer';
 import OverheadViewer from '@/components/documents/OverheadViewer';
-import MaterialTable from '@/components/baseData/MaterialTable';
-import LaborTable from '@/components/baseData/LaborTable';
-import UnitPriceListDocument from '@/components/documents/UnitPriceListDocument';
-import UnitPriceSangeunDocument from '@/components/documents/UnitPriceSangeunDocument';
-import EquipmentUsageListDocument from '@/components/documents/EquipmentUsageListDocument';
+import MaterialDataViewer from '@/components/data/MaterialDataViewer';
+import LaborDataViewer from '@/components/data/LaborDataViewer';
+import EquipmentDataViewer from '@/components/data/EquipmentDataViewer';
+import { useCalculationStore } from '@/store/calculationStore';
+import { useMenuStore } from '@/store/menuStore';
 
-const getMenuLabel = (id: string): string => {
-    for (const group of menuData) {
-        const menuItem = group.children?.find(child => child.id === id);
-        if (menuItem) return menuItem.label;
-    }
-    return 'Dashboard';
-};
+/**
+ * 메뉴 ID에 해당하는 레이블을 반환하는 함수
+ */
+function getMenuLabel(id: string): string {
+  // 모든 메뉴 아이템을 평면화하여 ID로 검색
+  const flattenMenuItems = (items: any[]): any[] => {
+    return items.reduce((acc, item) => {
+      acc.push(item);
+      if (item.children) {
+        acc.push(...flattenMenuItems(item.children));
+      }
+      return acc;
+    }, []);
+  };
+
+  const allItems = flattenMenuItems(menuData);
+  const menuItem = allItems.find(item => item.id === id);
+  return menuItem ? menuItem.label : id;
+}
 
 export default function Home() {
-    const { result, clearResult } = useCalculationStore();
-    const [activeMenu, setActiveMenu] = useState<string>('cost-calculation');
+  const { result } = useCalculationStore();
+  const { activeMenu, setActiveMenu } = useMenuStore();
 
-    const handleMenuSelect = (menuId: string) => {
-        if (menuId === 'cost-calculation' && result) {
-            if (confirm('새로운 계산을 시작하시겠습니까? 현재 계산 결과는 초기화됩니다.')) {
-                clearResult();
-                setActiveMenu(menuId);
-            }
-        } else {
-            setActiveMenu(menuId);
-        }
-    };
+  const handleMenuSelect = (menuId: string) => {
+    setActiveMenu(menuId);
+  };
 
-    const renderContent = () => {
-        const menuLabel = getMenuLabel(activeMenu);
-        const title = <h2 className="text-2xl font-bold mb-4">{menuLabel}</h2>;
+  /**
+   * 선택된 메뉴에 따라 적절한 컴포넌트를 렌더링하는 함수
+   */
+  const renderContent = () => {
+    if (!activeMenu) return null;
 
-        if (activeMenu === 'cost-calculation') {
-            return <div>{title}<CalculatorForm /></div>;
-        }
+    // 계산 결과가 필요한 메뉴 아이템들
+    const resultRequiredMenus = [
+      'bill-of-statement',
+      'unit-price-sheet-hopyo',
+      'overhead-summary'
+    ];
 
-        if (!result) {
-            return (
-                <div className="text-center p-8">
-                    {title}
-                    <p className="text-gray-500 mt-4">표시할 데이터가 없습니다. '비용계산' 메뉴에서 먼저 계산을 실행해주세요.</p>
-                </div>
-            );
-        }
-
-        switch (activeMenu) {
-            case 'bill-of-statement':
-                return <div>{title}<BillOfStatement result={result} /></div>;
-            case 'unit-price-sheet-hopyo':
-                return <div>{title}<UnitPriceSheetViewer items={result.lineItems} /></div>;
-            case 'overhead-summary':
-                return <div>{title}<OverheadViewer items={result.overheadDetails || []} /></div>;
-            case 'material-data': {
-                const materialData = result.lineItems.filter(i => i.type === 'material');
-                return <div>{title}<MaterialTable data={materialData} title={menuLabel} /></div>;
-            }
-            case 'labor-data': {
-                const laborData = result.lineItems.filter(i => i.type === 'labor');
-                return <div>{title}<LaborTable data={laborData} title={menuLabel} /></div>;
-            }
-            case 'equipment-usage-fee':
-            case 'equipment-base-data': {
-                const equipmentData = result.lineItems.filter(i => i.type === 'equipment');
-                return <div>{title}<MaterialTable data={equipmentData} title={menuLabel} /></div>;
-            }
-            case 'unit-price-list':
-                return <div>{title}<UnitPriceListDocument items={result.lineItems} /></div>;
-            case 'unit-price-table-sangeun':
-                return <div>{title}<UnitPriceSangeunDocument items={result.lineItems} /></div>;
-            case 'equipment-usage-list': {
-                const equipmentList = result.lineItems.filter(i => i.type === 'equipment');
-                return <div>{title}<EquipmentUsageListDocument items={equipmentList} /></div>;
-            }
-            case 'new-calculation':
-                return <CalculatorForm />;
-            case 'hopyo-document':
-                return <div>{title}<BillOfStatement result={result} /></div>;
-            case 'unit-price-sheet':
-                return <div>{title}<UnitPriceSheetViewer items={result.lineItems} /></div>;
-            case 'overhead-data':
-                return <div>{title}<OverheadViewer items={result.overheadDetails || []} /></div>;
-            case 'overhead-document':
-                return <div>{title}<BillOfStatement result={result} /></div>;
-            default:
-                return <div>{title}<p>이 페이지는 현재 준비 중입니다.</p></div>;
-        }
-    };
-
-    return (
-        <div className="flex w-full min-h-screen bg-gray-100">
-            <MenuTree activeMenu={activeMenu} onMenuSelect={handleMenuSelect} />
-            <main className="flex-1 p-8 overflow-auto">
-                <div className="bg-white p-6 rounded-lg shadow-md min-h-full">
-                    {renderContent()}
-                </div>
-            </main>
+    // 계산 결과가 필요하지만 결과가 없는 경우 안내 메시지 표시
+    if (resultRequiredMenus.includes(activeMenu) && !result) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full">
+          <p className="text-lg text-gray-500">계산 결과가 없습니다. 먼저 비용 계산을 실행해주세요.</p>
         </div>
-    );
+      );
+    }
+
+    // 선택된 메뉴에 따라 컴포넌트 렌더링
+    switch (activeMenu) {
+      case 'cost-calculation':
+        return <CalculatorForm />;
+      
+      case 'bill-of-statement':
+        return result && <BillOfStatement result={result} />;
+      
+      case 'unit-price-sheet-hopyo':
+        return result && <UnitPriceSheetViewer items={result.lineItems} />;
+      
+      case 'overhead-summary':
+        return result && <OverheadViewer items={result.overheadDetails || []} />;
+      
+      case 'material-data':
+        return <MaterialDataViewer />;
+      
+      case 'labor-data':
+        return <LaborDataViewer />;
+      
+      case 'equipment-data':
+        return <EquipmentDataViewer />;
+      
+      default:
+        return (
+          <div className="flex flex-col items-center justify-center h-full">
+            <p className="text-lg text-gray-500">선택된 메뉴: {getMenuLabel(activeMenu)}</p>
+            <p className="text-sm text-gray-400">해당 메뉴는 준비 중입니다.</p>
+          </div>
+        );
+    }
+  };
+
+  return (
+    <main className="flex min-h-screen flex-col">
+      <div className="flex flex-1">
+        <MenuTree activeMenu={activeMenu} onMenuSelect={handleMenuSelect} />
+        <div className="flex-1 p-6 overflow-auto">
+          <div className="mb-4">
+            <h1 className="text-2xl font-bold">{getMenuLabel(activeMenu)}</h1>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6 min-h-[calc(100vh-12rem)]">
+            {renderContent()}
+          </div>
+        </div>
+      </div>
+    </main>
+  );
 }
