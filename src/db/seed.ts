@@ -5,6 +5,7 @@ import csvParser from 'csv-parser';
 import dotenv from 'dotenv';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
+import { eq } from 'drizzle-orm';
 
 // .env 파일 로드
 dotenv.config();
@@ -265,158 +266,78 @@ function parseCategory(record: any): string {
 /**
  * 일위대가_호표.csv 파일을 읽어 UnitPriceRules 테이블에 데이터를 채우는 함수
  */
-async function seedUnitPriceRulesFromExcel(filePath: string, defaultPipeType: 'ductile' | 'steel') {
-  console.log(`Seeding Unit Price Rules from ${path.basename(filePath)}...`);
+async function seedUnitPriceRulesFromExcel(filePath: string, pipeType: 'ductile' | 'steel') {
+  console.log(`[Seeding Rules] Started for ${pipeType} from ${filePath}`);
   
-  try {
-    if (!fileExists(filePath)) {
-      console.warn(`일위대가 호표 파일을 찾을 수 없습니다: ${filePath}`);
-      return;
-    }
+  const content = fs.readFileSync(filePath);
+  // CSV 파싱 옵션을 수정하여 빈 행도 유지하고, 컬럼이 없는 raw array 형태로 받습니다.
+  const records: string[][] = parse(content, {
+    from_line: 2, // 헤더 행 다음부터 시작
+  });
 
-    // 1. 일위대가_호표.csv 파일 읽기
-    const content = fs.readFileSync(filePath);
-    const records = parse(content, { 
-      columns: true, 
-      skip_empty_lines: true,
-      trim: true
-    });
+  const rulesToInsert = [];
+  let currentWorkCategory = '관 갱생공'; // 현재 공종을 추적하는 변수
+  let currentDiameterContext = { pipeType, minDiameter: 0, maxDiameter: 0 };
 
-    // 2. PriceList 테이블에서 모든 항목 조회하여 매핑 테이블 생성
-    const priceListItems = await db.select().from(PriceList);
+  // PriceList 전체를 미리 메모리에 로드하여 DB 조회를 최소화합니다.
+  const priceListItems = await db.query.PriceList.findMany();
+  const priceListMap = new Map(priceListItems.map(p => [p.itemName, p.itemCode]));
+
+  for (const record of records) {
+    // CSV의 각 컬럼을 변수로 할당 (엑셀 순서에 맞춰 인덱스 조정)
+    const col_A = record[0]; // 공종
+    const col_B = record[1]; // 품명
+    const col_C = record[2]; // 규격
+    const col_D = record[3]; // 단위
+    const col_E = record[4]; // 수량
     
-    // 품명과 규격을 기준으로 itemCode를 찾기 위한 맵 생성
-    const itemCodeMap = new Map();
+    // 행이 비어있거나, 의미 없는 데이터는 건너뜁니다.
+    if (!col_A && !col_B) continue;
     
-    // 품명만으로 itemCode를 찾기 위한 백업 맵 생성
-    const itemNameMap = new Map();
-    
-    priceListItems.forEach(item => {
-      // 품명+규격 조합으로 맵 생성 (더 정확한 매칭을 위해)
-      const key = `${item.itemName}|${item.type}`;
-      itemCodeMap.set(key, item.itemCode);
-      
-      // 품명만으로도 맵 생성 (백업용)
-      itemNameMap.set(item.itemName, {
-        itemCode: item.itemCode,
-        type: item.type
-      });
-    });
-
-    const rulesToInsert = [];
-    let currentGroupInfo = { 
-      pipeType: defaultPipeType,  // 기본값은 인자로 전달받은 관종
-      minDiameter: 0, 
-      maxDiameter: 0, 
-      description: '' 
-    };
-    
-    // 파일명에서 관종 정보 추출 시도
-    if (filePath.toLowerCase().includes('강관')) {
-      currentGroupInfo.pipeType = 'steel';
-    } else if (filePath.toLowerCase().includes('주철관')) {
-      currentGroupInfo.pipeType = 'ductile';
-    }
-
-    // 현재 공종을 저장할 변수
-    let currentWorkCategory = '관로공';
-
-    console.log('Processing unit price sheet records...');
-    for (const record of records) {
-      // 공종 헤더 행 처리 (예: "1. 토공")
-      if (isCategoryHeader(record)) {
-        currentWorkCategory = parseCategory(record);
-        console.log(`Found work category: ${currentWorkCategory}`);
-        continue;
-      }
-      
-      // 3. 그룹 행(예: "No. 1 관 갱생공 (D300)")을 만나면, 현재 작업의 관종/관경 정보 업데이트
-      if (record['공종'] && record['공종'].trim().startsWith('No.')) {
-        const title = record['공종'].trim();
-        console.log(`Processing group: ${title}`);
-        
-        // 관종 정보 (파일명이나 그룹 제목에서 추출)
-        // 기본값은 인자로 전달받은 관종으로 설정
-        currentGroupInfo.pipeType = defaultPipeType;
-        
-        // 그룹 제목에서 관종 정보 추출 시도
-        if (title.includes('강관')) {
-          currentGroupInfo.pipeType = 'steel';
-        } else if (title.includes('주철관')) {
-          currentGroupInfo.pipeType = 'ductile';
+    // 1. 관경 컨텍스트 헤더 식별 (예: "No. 1 관 갱생공 (D300)")
+    if (col_A && col_A.includes('관 갱생공')) {
+        const diameterMatch = col_A.match(/D(\d+)/i);
+        const diameter = diameterMatch ? parseInt(diameterMatch[1], 10) : 0;
+        if (diameter > 0) {
+            currentDiameterContext = { pipeType, minDiameter: diameter, maxDiameter: diameter };
+            console.log(`  -> New Diameter Context Found: D${diameter}`);
         }
-        
-        // 관경 정보 추출 (예: "D300"에서 300 추출)
-        const diameterMatch = title.match(/D(\d+)/i);
-        if (diameterMatch && diameterMatch[1]) {
-          const diameter = parseInt(diameterMatch[1]);
-          currentGroupInfo.minDiameter = diameter;
-          currentGroupInfo.maxDiameter = diameter;
-          currentGroupInfo.description = title;
-          console.log(`  - Pipe type: ${currentGroupInfo.pipeType}, Diameter: ${diameter}mm, Category: ${currentWorkCategory}`);
+        continue;
+    }
+    
+    // 2. 실제 데이터 항목(품명, 수량 등이 있는 행) 처리
+    // 첫 번째 컬럼이 비어있고, 품명이 있는 경우 (실제 항목 행)
+    if (!col_A && col_B) {
+      const itemName = col_B.trim();
+      const quantityStr = col_E;
+      const quantity = quantityStr ? parseFloat(quantityStr.replace(/,/g, '')) : 0;
+
+      if (itemName && quantity > 0 && currentDiameterContext.minDiameter > 0) {
+        const itemCode = priceListMap.get(itemName);
+
+        if (itemCode) {
+          rulesToInsert.push({
+            ...currentDiameterContext,
+            description: `${currentWorkCategory} D${currentDiameterContext.minDiameter} - ${itemName}`,
+            workCategory: currentWorkCategory, // 식별된 공종 할당
+            itemCode: itemCode,
+            quantity: quantity,
+          });
+          console.log(`  -> Added rule: ${itemName}, quantity: ${quantity}, diameter: D${currentDiameterContext.minDiameter}`);
         } else {
-          console.warn(`  - 관경 정보를 찾을 수 없습니다: ${title}`);
+          console.warn(`  [Warning] Matching itemCode not found for: "${itemName}"`);
         }
-        continue;
-      }
-
-      // 4. 일반 항목 행(재료비, 노무비 등) 처리
-      const itemName = record['품명']?.trim();
-      const spec = record['규격']?.trim() || '';
-      const quantity = parseFloat(record['수량']?.replace(',', '.')) || 0;
-
-      if (!itemName || quantity <= 0) {
-        continue; // 품명이 없거나 수량이 0이하인 행은 건너뜀
-      }
-
-      // 품명과 타입을 기준으로 itemCode 찾기
-      let itemCode = null;
-      let itemType = null;
-      
-      // 1단계: 품명을 기준으로 PriceList에서 매칭 시도
-      const itemInfo = itemNameMap.get(itemName);
-      if (itemInfo) {
-        itemCode = itemInfo.itemCode;
-        itemType = itemInfo.type;
-      }
-      
-      // 2단계: 품명+타입 조합으로 매칭 시도 (더 정확한 매칭)
-      ['material', 'labor', 'equipment'].forEach(type => {
-        const key = `${itemName}|${type}`;
-        if (itemCodeMap.has(key)) {
-          itemCode = itemCodeMap.get(key);
-          itemType = type;
-        }
-      });
-      
-      if (itemCode) {
-        // 규칙 객체 생성
-        const rule = {
-          description: `${currentGroupInfo.description} - ${itemName}${spec ? ` (${spec})` : ''}`,
-          pipeType: currentGroupInfo.pipeType,
-          minDiameter: currentGroupInfo.minDiameter,
-          maxDiameter: currentGroupInfo.maxDiameter,
-          workCategory: currentWorkCategory, // 현재 공종 정보 추가
-          itemCode: itemCode,
-          quantity: quantity
-        };
-        
-        rulesToInsert.push(rule);
-        console.log(`  - Added rule: ${itemName}, quantity: ${quantity}, type: ${itemType}, category: ${currentWorkCategory}`);
-      } else {
-        console.warn(`  - PriceList에서 품목을 찾을 수 없습니다: ${itemName}${spec ? ` (${spec})` : ''}`);
       }
     }
-    
-    // 5. DB에 최종 데이터 삽입
-    if (rulesToInsert.length > 0) {
-      await db.insert(UnitPriceRules).values(rulesToInsert).onConflictDoNothing();
-      console.log(`${rulesToInsert.length} unit price rules from ${path.basename(filePath)} seeded.`);
-    } else {
-      console.warn(`${path.basename(filePath)}에서 삽입할 규칙이 없습니다.`);
-    }
-  } catch (error) {
-    console.error(`Error seeding unit price rules from ${path.basename(filePath)}:`, error);
+  }
+
+  if (rulesToInsert.length > 0) {
+    // 기존 규칙 삭제 후 새로 삽입
+    await db.delete(UnitPriceRules).where(eq(UnitPriceRules.pipeType, pipeType));
+    await db.insert(UnitPriceRules).values(rulesToInsert);
+    console.log(`[Seeding Rules] Completed for ${pipeType}. ${rulesToInsert.length} rules inserted.`);
+  } else {
+    console.log(`[Seeding Rules] No rules to insert for ${pipeType}.`);
   }
 }
 
