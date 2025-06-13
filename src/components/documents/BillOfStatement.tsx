@@ -24,10 +24,10 @@ export default function BillOfStatement({ result }: BillOfStatementProps) {
                     <Table>
                         <TableHeader><TableRow><TableHead>공종</TableHead><TableHead className="text-right">금액</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {Object.entries(costsByCategory).map(([category, costs]) => (
-                                <TableRow key={category}>
-                                    <TableCell>{category}</TableCell>
-                                    <TableCell className="text-right">{(costs.material + costs.labor + costs.equipment).toLocaleString()} 원</TableCell>
+                            {costsByCategory.map((cost) => (
+                                <TableRow key={cost.category}>
+                                    <TableCell>{cost.category}</TableCell>
+                                    <TableCell className="text-right">{cost.totalCost.toLocaleString()} 원</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
