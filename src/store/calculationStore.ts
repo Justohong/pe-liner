@@ -9,6 +9,18 @@ export interface CategoryCost {
   totalCost: number;
 }
 
+export interface LineItem {
+  itemName: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  type: 'material' | 'labor' | 'equipment';
+  workCategory?: string;
+  specification?: string;
+  name?: string;
+}
+
 // API 응답 결과에 대한 상세 타입을 정의합니다.
 // 이 타입은 이전에 calculationEngine.ts 또는 calculator/page.tsx 에서 정의했던 것과 동일합니다.
 export interface CalculationResult {
@@ -20,15 +32,7 @@ export interface CalculationResult {
   overheadDetails: { itemName: string; amount: number }[]; // 간접비 상세 내역
   totalOverheadCost: number; // 총 간접비
   costsByCategory: CategoryCost[]; // 공종별 비용
-  lineItems: {
-    itemName: string;
-    unit: string;
-    quantity: number;
-    unitPrice: number;
-    totalPrice: number;
-    type: 'material' | 'labor' | 'equipment';
-    workCategory?: string; // 공종 정보
-  }[];
+  lineItems: LineItem[];
 }
 
 // 스토어의 상태(state)와 행동(actions)에 대한 타입을 정의합니다.
