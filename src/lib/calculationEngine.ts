@@ -1,6 +1,6 @@
 import { db } from '@/db';
-import { PriceList, UnitPriceRules, SurchargeRules, OverheadRules } from '@/db/schema';
-import { and, eq, lte, gte, inArray } from 'drizzle-orm';
+import { PriceList, SurchargeRules, OverheadRules } from '@/db/schema';
+import { eq, inArray } from 'drizzle-orm';
 
 // --- 1. 타입 정의 ---
 
@@ -75,20 +75,225 @@ export interface CalculationResult {
   };
 }
 
-// --- 2. 핵심 계산 함수 ---
+// 동적 규칙 생성을 위한 타입 정의
+interface UnitPriceRule {
+  workCategory: string;
+  itemCode: string;
+  quantity: number;
+}
+
+// --- 2. 동적 규칙 생성 함수 ---
+
+/**
+ * 관경 및 관종에 따라 동적으로 공사 규칙을 생성하는 함수
+ */
+function generateRules(pipeType: 'steel' | 'ductile', diameter: number): UnitPriceRule[] {
+  const rules: UnitPriceRule[] = [];
+  
+  // 관 갱생공 규칙 생성
+  if (pipeType === 'ductile') {
+    // PE 라이너 (관경에 비례하여 증가)
+    rules.push({
+      workCategory: '관 갱생공',
+      itemCode: 'M0001', // PE 라이너
+      quantity: calculatePELinerQuantity(diameter)
+    });
+    
+    // 에폭시 수지 (관경에 비례하여 증가)
+    rules.push({
+      workCategory: '관 갱생공',
+      itemCode: 'M0002', // 에폭시 수지
+      quantity: calculateEpoxyQuantity(diameter)
+    });
+    
+    // 접착제 (관경에 비례하여 증가)
+    rules.push({
+      workCategory: '관 갱생공',
+      itemCode: 'M0003', // 접착제
+      quantity: calculateAdhesiveQuantity(diameter)
+    });
+    
+    // 특별인부 (관경에 따라 필요 인력 증가)
+    rules.push({
+      workCategory: '관 갱생공',
+      itemCode: 'L0001', // 특별인부
+      quantity: calculateSpecialLaborQuantity(diameter)
+    });
+    
+    // 보통인부 (관경에 따라 필요 인력 증가)
+    rules.push({
+      workCategory: '관 갱생공',
+      itemCode: 'L0002', // 보통인부
+      quantity: calculateCommonLaborQuantity(diameter)
+    });
+    
+    // 배관공 (관경에 따라 필요 인력 증가)
+    rules.push({
+      workCategory: '관 갱생공',
+      itemCode: 'L0003', // 배관공
+      quantity: calculatePipeFitterQuantity(diameter)
+    });
+    
+    // 라이닝기 (관경에 따라 사용 시간 증가)
+    rules.push({
+      workCategory: '관 갱생공',
+      itemCode: 'E0001', // 라이닝기
+      quantity: calculateLiningMachineQuantity(diameter)
+    });
+    
+    // 공기압축기 (관경에 따라 사용 시간 증가)
+    rules.push({
+      workCategory: '관 갱생공',
+      itemCode: 'E0002', // 공기압축기
+      quantity: calculateCompressorQuantity(diameter)
+    });
+  }
+  
+  // 추가 공종 (예: 토공, 가시설공 등) 규칙 생성
+  // 토공 규칙
+  if (diameter >= 300) {
+    rules.push({
+      workCategory: '토공',
+      itemCode: 'L0002', // 보통인부
+      quantity: calculateEarthworkLaborQuantity(diameter)
+    });
+    
+    // 굴삭기 사용
+    if (diameter >= 400) {
+      rules.push({
+        workCategory: '토공',
+        itemCode: 'E0003', // 1톤 트럭
+        quantity: calculateExcavatorQuantity(diameter)
+      });
+    }
+  }
+  
+  return rules;
+}
+
+// --- 3. 수량 계산 함수들 ---
+
+/**
+ * PE 라이너 수량 계산 (관경에 비례)
+ */
+function calculatePELinerQuantity(diameter: number): number {
+  // 기본 수량 (D300 기준) + 관경에 따른 증가량
+  const baseQuantity = 1.0;
+  const diameterFactor = diameter / 300;
+  return parseFloat((baseQuantity * diameterFactor).toFixed(3));
+}
+
+/**
+ * 에폭시 수지 수량 계산 (관경에 비례)
+ */
+function calculateEpoxyQuantity(diameter: number): number {
+  // 기본 수량 (D300 기준) + 관경에 따른 증가량
+  const baseQuantity = 0.5;
+  const diameterFactor = (diameter / 300) ** 1.5; // 지수적으로 증가
+  return parseFloat((baseQuantity * diameterFactor).toFixed(3));
+}
+
+/**
+ * 접착제 수량 계산 (관경에 비례)
+ */
+function calculateAdhesiveQuantity(diameter: number): number {
+  // 기본 수량 (D300 기준) + 관경에 따른 증가량
+  const baseQuantity = 0.3;
+  const diameterFactor = diameter / 300;
+  return parseFloat((baseQuantity * diameterFactor).toFixed(3));
+}
+
+/**
+ * 특별인부 수량 계산 (관경에 따라 필요 인력 증가)
+ */
+function calculateSpecialLaborQuantity(diameter: number): number {
+  // 기본 인력 + 관경에 따른 추가 인력
+  if (diameter <= 300) return 0.05;
+  if (diameter <= 400) return 0.07;
+  if (diameter <= 500) return 0.09;
+  if (diameter <= 600) return 0.12;
+  return 0.15; // 600mm 초과
+}
+
+/**
+ * 보통인부 수량 계산 (관경에 따라 필요 인력 증가)
+ */
+function calculateCommonLaborQuantity(diameter: number): number {
+  // 기본 인력 + 관경에 따른 추가 인력
+  if (diameter <= 300) return 0.08;
+  if (diameter <= 400) return 0.1;
+  if (diameter <= 500) return 0.12;
+  if (diameter <= 600) return 0.15;
+  return 0.18; // 600mm 초과
+}
+
+/**
+ * 배관공 수량 계산 (관경에 따라 필요 인력 증가)
+ */
+function calculatePipeFitterQuantity(diameter: number): number {
+  // 기본 인력 + 관경에 따른 추가 인력
+  if (diameter <= 300) return 0.06;
+  if (diameter <= 400) return 0.08;
+  if (diameter <= 500) return 0.1;
+  if (diameter <= 600) return 0.12;
+  return 0.15; // 600mm 초과
+}
+
+/**
+ * 라이닝기 사용 시간 계산 (관경에 따라 사용 시간 증가)
+ */
+function calculateLiningMachineQuantity(diameter: number): number {
+  // 기본 사용 시간 + 관경에 따른 추가 시간
+  if (diameter <= 300) return 0.05;
+  if (diameter <= 400) return 0.06;
+  if (diameter <= 500) return 0.07;
+  if (diameter <= 600) return 0.08;
+  return 0.1; // 600mm 초과
+}
+
+/**
+ * 공기압축기 사용 시간 계산 (관경에 따라 사용 시간 증가)
+ */
+function calculateCompressorQuantity(diameter: number): number {
+  // 기본 사용 시간 + 관경에 따른 추가 시간
+  if (diameter <= 300) return 0.04;
+  if (diameter <= 400) return 0.05;
+  if (diameter <= 500) return 0.06;
+  if (diameter <= 600) return 0.07;
+  return 0.09; // 600mm 초과
+}
+
+/**
+ * 토공 노무비 계산 (관경에 따라 필요 인력 증가)
+ */
+function calculateEarthworkLaborQuantity(diameter: number): number {
+  // 기본 인력 + 관경에 따른 추가 인력
+  if (diameter <= 300) return 0.06;
+  if (diameter <= 400) return 0.08;
+  if (diameter <= 500) return 0.1;
+  if (diameter <= 600) return 0.12;
+  return 0.15; // 600mm 초과
+}
+
+/**
+ * 굴삭기 사용 시간 계산 (관경에 따라 사용 시간 증가)
+ */
+function calculateExcavatorQuantity(diameter: number): number {
+  // 기본 사용 시간 + 관경에 따른 추가 시간
+  if (diameter <= 400) return 0.03;
+  if (diameter <= 500) return 0.04;
+  if (diameter <= 600) return 0.05;
+  return 0.06; // 600mm 초과
+}
+
+// --- 4. 핵심 계산 함수 ---
 
 export async function calculateConstructionCost(options: CalculationOptions): Promise<CalculationResult> {
-  // 1. 조건에 맞는 '단위 공사 규칙' 조회
-  const rules = await db.select().from(UnitPriceRules).where(
-    and(
-      eq(UnitPriceRules.pipeType, options.pipeType),
-      lte(UnitPriceRules.minDiameter, options.diameter),
-      gte(UnitPriceRules.maxDiameter, options.diameter)
-    )
-  );
+  // 1. 동적으로 규칙 생성
+  const rules = generateRules(options.pipeType, options.diameter);
 
   if (rules.length === 0) {
-    throw new Error(`해당 조건(관종: ${options.pipeType}, 관경: ${options.diameter}mm)에 맞는 공사 규칙을 찾을 수 없습니다.`);
+    throw new Error(`해당 조건(관종: ${options.pipeType}, 관경: ${options.diameter}mm)에 맞는 공사 규칙을 생성할 수 없습니다.`);
   }
 
   // 2. 규칙에 포함된 모든 자원의 단가 한 번에 조회
@@ -157,9 +362,9 @@ export async function calculateConstructionCost(options: CalculationOptions): Pr
     lineItems.push({
       itemName: priceInfo.itemName,
       unit: priceInfo.unit || '개',
-      quantity: rule.quantity,
+      quantity: rule.quantity * options.length,
       unitPrice: priceInfo.unitPrice,
-      totalPrice: costPerMeter,
+      totalPrice: costPerMeter * options.length,
       type: priceInfo.type as any,
       workCategory: workCategory
     });

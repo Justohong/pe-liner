@@ -2,6 +2,7 @@ import { db, closeConnection } from './index';
 import { sql } from 'drizzle-orm';
 import * as migration_0001 from './migrations/0001_add_overhead_rules';
 import * as migration_0002 from './migrations/0002_add_work_category';
+import * as migration_0003 from './migrations/0003_drop_unit_price_rules';
 
 async function runMigrations() {
   console.log('Running migrations...');
@@ -20,6 +21,7 @@ async function runMigrations() {
     const migrations = [
       { name: '0001_add_overhead_rules', up: migration_0001.up, down: migration_0001.down },
       { name: '0002_add_work_category', up: migration_0002.up, down: migration_0002.down },
+      { name: '0003_drop_unit_price_rules', up: migration_0003.up, down: migration_0003.down },
     ];
 
     for (const migration of migrations) {

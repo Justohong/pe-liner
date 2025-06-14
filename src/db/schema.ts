@@ -18,26 +18,6 @@ export const PriceList = pgTable('price_list', {
   };
 });
 
-
-/**
- * @description 규칙 데이터베이스 (Rule DB) - 일위대가표의 자동 생성을 위한 핵심 규칙
- * 어떤 조건에서 1m 시공 시 어떤 자원이 얼마나 필요한지를 정의하는 테이블입니다.
- */
-export const UnitPriceRules = pgTable('unit_price_rules', {
-    id: serial('id').primaryKey(),
-    description: text('description'),                                 // 규칙에 대한 설명 (예: D250-300 주철관 일반조건)
-    pipeType: varchar('pipe_type', { length: 50 }).notNull(),       // 관종 ('steel', 'ductile')
-    minDiameter: integer('min_diameter').notNull(),                   // 최소 적용 관경 (mm)
-    maxDiameter: integer('max_diameter').notNull(),                   // 최대 적용 관경 (mm)
-    workCategory: varchar('work_category', { length: 255 }).notNull().default('기타'), // "토공", "가시설공" 등 공종 저장
-    
-    // 외래 키(Foreign Key) 설정: PriceList 테이블의 항목을 참조합니다.
-    itemCode: varchar('item_code', { length: 50 }).notNull().references(() => PriceList.itemCode),
-    
-    quantity: real('quantity').notNull(),                             // 1미터(m) 당 필요한 수량
-});
-
-
 /**
  * @description 할증 및 특수조건 규칙 테이블
  * 곡관부, 입상관 등 특정 조건에 따른 추가 계산 규칙을 정의합니다.
