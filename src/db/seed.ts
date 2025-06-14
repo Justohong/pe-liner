@@ -287,36 +287,50 @@ async function seedUnitPriceRulesFromExcel(filePath: string, pipeType: 'ductile'
 
   // PriceList 전체를 미리 메모리에 로드하여 DB 조회를 최소화합니다.
   const priceListItems = await db.query.PriceList.findMany();
-  const priceListMap = new Map(priceListItems.map(p => [p.itemName, p.itemCode]));
+  const priceListMap = new Map(priceListItems.map(p => [p.itemName.trim(), p.itemCode]));
+  
+  // 사용 가능한 품목 목록 출력
+  console.log("사용 가능한 품목 목록:", [...priceListMap.keys()]);
+
+  // 헤더 행은 건너뜁니다
+  let skipFirstRow = true;
 
   for (const record of records) {
+    // 첫 번째 행(헤더)은 건너뜁니다
+    if (skipFirstRow) {
+      skipFirstRow = false;
+      continue;
+    }
+    
     // CSV의 각 컬럼을 변수로 할당 (엑셀 순서에 맞춰 인덱스 조정)
-    const col_A = record[0]; // 공종
-    const col_B = record[1]; // 품명
+    const col_A = record[0]; // No. 1 관 갱생공 (D300) 또는 빈 값
+    const col_B = record[1]; // 품명 또는 빈 값
     const col_C = record[2]; // 규격
     const col_D = record[3]; // 단위
     const col_E = record[4]; // 수량
     
-    // 행이 비어있거나, 의미 없는 데이터는 건너뜁니다.
-    if (!col_A && !col_B) continue;
+    // 행 내용 디버깅 출력
+    console.log(`처리 중인 행: A:${col_A || '-'} | B:${col_B || '-'} | C:${col_C || '-'} | D:${col_D || '-'} | E:${col_E || '-'}`);
     
-    // 디버깅 로그 추가
-    console.log(`처리 중인 행: ${col_A || '-'} | ${col_B || '-'} | ${col_C || '-'} | ${col_D || '-'} | ${col_E || '-'}`);
-    
-    // 관경 컨텍스트 헤더 식별 (예: "No. 1 관 갱생공 (D300)")
-    if (col_A && col_A.includes('관 갱생공')) {
-        const diameterMatch = col_A.match(/D(\d+)/i);
-        const diameter = diameterMatch ? parseInt(diameterMatch[1], 10) : 0;
-        if (diameter > 0) {
-            currentDiameterContext = { pipeType, minDiameter: diameter, maxDiameter: diameter };
-            console.log(`  -> New Diameter Context Found: D${diameter}`);
-        }
-        continue;
+    // 빈 행은 건너뜁니다.
+    if (!col_A?.trim() && !col_B?.trim()) {
+      console.log('  -> 빈 행 건너뛰기');
+      continue;
     }
     
-    // 실제 데이터 항목(품명, 수량 등이 있는 행) 처리
-    // 첫 번째 컬럼이 비어있고, 품명이 있는 경우 (실제 항목 행)
-    if (!col_A && col_B) {
+    // 관경 컨텍스트 헤더 식별 (예: "No. 1 관 갱생공 (D300)")
+    if (col_A?.includes('관 갱생공')) {
+      const diameterMatch = col_A.match(/D(\d+)/i);
+      if (diameterMatch) {
+        const diameter = parseInt(diameterMatch[1], 10);
+        currentDiameterContext = { pipeType, minDiameter: diameter, maxDiameter: diameter };
+        console.log(`  -> New Diameter Context Found: D${diameter}`);
+      }
+      continue;
+    }
+    
+    // 실제 데이터 항목 처리 (첫 번째 컬럼이 비어있고, 두 번째 컬럼에 품명이 있는 경우)
+    if (!col_A?.trim() && col_B?.trim()) {
       const itemName = col_B.trim();
       const quantityStr = col_E;
       const quantity = quantityStr ? parseFloat(quantityStr.replace(/,/g, '')) : 0;
@@ -328,20 +342,24 @@ async function seedUnitPriceRulesFromExcel(filePath: string, pipeType: 'ductile'
           rulesToInsert.push({
             ...currentDiameterContext,
             description: `${currentWorkCategory} D${currentDiameterContext.minDiameter} - ${itemName}`,
-            workCategory: currentWorkCategory, // 식별된 공종 할당
+            workCategory: currentWorkCategory,
             itemCode: itemCode,
             quantity: quantity,
           });
           console.log(`  -> Added rule: ${itemName}, quantity: ${quantity}, diameter: D${currentDiameterContext.minDiameter}`);
         } else {
-          console.warn(`  [Warning] Matching itemCode not found for: "${itemName}"`);
+          console.warn(`  [Warning] Matching itemCode not found for: "${itemName}". Available items: ${[...priceListMap.keys()].slice(0, 5).join(', ')}...`);
         }
+      } else {
+        if (!itemName) console.log(`  -> 품명 없음`);
+        if (!(quantity > 0)) console.log(`  -> 수량 없음 또는 0: ${quantityStr}`);
+        if (!(currentDiameterContext.minDiameter > 0)) console.log(`  -> 관경 컨텍스트 없음`);
       }
     }
   }
 
   if (rulesToInsert.length > 0) {
-    // 기존 규칙 삭제 후 새로 삽입
+    // 해당 관종의 기존 규칙만 삭제 후 새로 삽입
     await db.delete(UnitPriceRules).where(eq(UnitPriceRules.pipeType, pipeType));
     await db.insert(UnitPriceRules).values(rulesToInsert);
   }
