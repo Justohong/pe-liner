@@ -289,7 +289,6 @@ async function seedUnitPriceRulesFromExcel(filePath: string, pipeType: 'ductile'
   const priceListItems = await db.query.PriceList.findMany();
   const priceListMap = new Map(priceListItems.map(p => [p.itemName.trim(), p.itemCode]));
   
-  // 사용 가능한 품목 목록 출력
   console.log("사용 가능한 품목 목록:", [...priceListMap.keys()]);
 
   // 헤더 행은 건너뜁니다
@@ -303,7 +302,7 @@ async function seedUnitPriceRulesFromExcel(filePath: string, pipeType: 'ductile'
     }
     
     // CSV의 각 컬럼을 변수로 할당 (엑셀 순서에 맞춰 인덱스 조정)
-    const col_A = record[0]; // No. 1 관 갱생공 (D300) 또는 빈 값
+    const col_A = record[0]; // 공종 또는 빈 값
     const col_B = record[1]; // 품명 또는 빈 값
     const col_C = record[2]; // 규격
     const col_D = record[3]; // 단위
