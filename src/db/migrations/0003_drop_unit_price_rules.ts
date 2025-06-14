@@ -27,4 +27,4 @@ export async function down(db: any) {
       FOREIGN KEY (item_code) REFERENCES price_list(item_code)
     );
   `);
-} 
+}

@@ -20,6 +20,21 @@ export interface CategoryCost {
   laborCost: number;
   equipmentCost: number;
   totalCost: number;
+  // 호환성을 위한 별칭 속성
+  material?: number;
+  labor?: number;
+  equipment?: number;
+}
+
+// 라인 아이템 타입
+export interface LineItem {
+  itemName: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  type: 'material' | 'labor' | 'equipment';
+  workCategory: string;
 }
 
 // 계산 결과 타입
@@ -32,15 +47,7 @@ export interface CalculationResult {
   overheadDetails: { itemName: string; amount: number }[]; // 간접비 상세 내역
   totalOverheadCost: number; // 총 간접비
   costsByCategory: CategoryCost[]; // 공종별 비용
-  lineItems: {
-    itemName: string;
-    unit: string;
-    quantity: number;
-    unitPrice: number;
-    totalPrice: number;
-    type: 'material' | 'labor' | 'equipment';
-    workCategory: string; // 공종 정보 추가
-  }[];
+  lineItems: LineItem[];
   summary?: {
     directCost: {
       total: number;
@@ -59,15 +66,7 @@ export interface CalculationResult {
     byCategory: {
       categoryName: string;
       total: number;
-      lineItems: {
-        itemName: string;
-        unit: string;
-        quantity: number;
-        unitPrice: number;
-        totalPrice: number;
-        type: 'material' | 'labor' | 'equipment';
-        workCategory: string;
-      }[];
+      lineItems: LineItem[];
     }[];
     directCost: { total: number; material: number; labor: number; equipment: number };
     overheadCost: { total: number; items: { itemName: string; amount: number }[] };
@@ -75,100 +74,101 @@ export interface CalculationResult {
   };
 }
 
-// 동적 규칙 생성을 위한 타입 정의
-interface UnitPriceRule {
-  workCategory: string;
-  itemCode: string;
+// 레시피 아이템 타입 (단가 정보가 없는 LineItem)
+interface RecipeItem {
+  itemName: string;
   quantity: number;
+  workCategory: string;
 }
 
-// --- 2. 동적 규칙 생성 함수 ---
+// --- 2. 동적 레시피 생성 함수 ---
 
 /**
- * 관경 및 관종에 따라 동적으로 공사 규칙을 생성하는 함수
+ * 관경 및 관종에 따라 동적으로 공사 레시피를 생성하는 함수
  */
-function generateRules(pipeType: 'steel' | 'ductile', diameter: number): UnitPriceRule[] {
-  const rules: UnitPriceRule[] = [];
+function getDynamicRecipe(options: CalculationOptions): RecipeItem[] {
+  const { pipeType, diameter } = options;
+  const recipe: RecipeItem[] = [];
   
-  // 관 갱생공 규칙 생성
+  // 관 갱생공 레시피 생성
   if (pipeType === 'ductile') {
     // PE 라이너 (관경에 비례하여 증가)
-    rules.push({
+    recipe.push({
       workCategory: '관 갱생공',
-      itemCode: 'M0001', // PE 라이너
+      itemName: 'PE 라이너',
       quantity: calculatePELinerQuantity(diameter)
     });
     
     // 에폭시 수지 (관경에 비례하여 증가)
-    rules.push({
+    recipe.push({
       workCategory: '관 갱생공',
-      itemCode: 'M0002', // 에폭시 수지
+      itemName: '에폭시 수지',
       quantity: calculateEpoxyQuantity(diameter)
     });
     
     // 접착제 (관경에 비례하여 증가)
-    rules.push({
+    recipe.push({
       workCategory: '관 갱생공',
-      itemCode: 'M0003', // 접착제
+      itemName: '접착제',
       quantity: calculateAdhesiveQuantity(diameter)
     });
     
     // 특별인부 (관경에 따라 필요 인력 증가)
-    rules.push({
+    recipe.push({
       workCategory: '관 갱생공',
-      itemCode: 'L0001', // 특별인부
+      itemName: '특별인부',
       quantity: calculateSpecialLaborQuantity(diameter)
     });
     
     // 보통인부 (관경에 따라 필요 인력 증가)
-    rules.push({
+    recipe.push({
       workCategory: '관 갱생공',
-      itemCode: 'L0002', // 보통인부
+      itemName: '보통인부',
       quantity: calculateCommonLaborQuantity(diameter)
     });
     
     // 배관공 (관경에 따라 필요 인력 증가)
-    rules.push({
+    recipe.push({
       workCategory: '관 갱생공',
-      itemCode: 'L0003', // 배관공
+      itemName: '배관공',
       quantity: calculatePipeFitterQuantity(diameter)
     });
     
     // 라이닝기 (관경에 따라 사용 시간 증가)
-    rules.push({
+    recipe.push({
       workCategory: '관 갱생공',
-      itemCode: 'E0001', // 라이닝기
+      itemName: '라이닝기',
       quantity: calculateLiningMachineQuantity(diameter)
     });
     
     // 공기압축기 (관경에 따라 사용 시간 증가)
-    rules.push({
+    recipe.push({
       workCategory: '관 갱생공',
-      itemCode: 'E0002', // 공기압축기
+      itemName: '공기압축기',
       quantity: calculateCompressorQuantity(diameter)
     });
   }
   
-  // 추가 공종 (예: 토공, 가시설공 등) 규칙 생성
-  // 토공 규칙
+  // 추가 공종 (예: 토공, 가시설공 등) 레시피 생성
+  // 토공 레시피
   if (diameter >= 300) {
-    rules.push({
+    recipe.push({
       workCategory: '토공',
-      itemCode: 'L0002', // 보통인부
+      itemName: '보통인부',
       quantity: calculateEarthworkLaborQuantity(diameter)
     });
     
     // 굴삭기 사용
     if (diameter >= 400) {
-      rules.push({
+      recipe.push({
         workCategory: '토공',
-        itemCode: 'E0003', // 1톤 트럭
+        itemName: '1톤 트럭',
         quantity: calculateExcavatorQuantity(diameter)
       });
     }
   }
   
-  return rules;
+  return recipe;
 }
 
 // --- 3. 수량 계산 함수들 ---
@@ -289,27 +289,27 @@ function calculateExcavatorQuantity(diameter: number): number {
 // --- 4. 핵심 계산 함수 ---
 
 export async function calculateConstructionCost(options: CalculationOptions): Promise<CalculationResult> {
-  // 1. 동적으로 규칙 생성
-  const rules = generateRules(options.pipeType, options.diameter);
+  // 1. 동적으로 레시피 생성
+  const recipe = getDynamicRecipe(options);
 
-  if (rules.length === 0) {
-    throw new Error(`해당 조건(관종: ${options.pipeType}, 관경: ${options.diameter}mm)에 맞는 공사 규칙을 생성할 수 없습니다.`);
+  if (recipe.length === 0) {
+    throw new Error(`해당 조건(관종: ${options.pipeType}, 관경: ${options.diameter}mm)에 맞는 공사 레시피를 생성할 수 없습니다.`);
   }
 
-  // 2. 규칙에 포함된 모든 자원의 단가 한 번에 조회
-  const itemCodes = rules.map(rule => rule.itemCode);
+  // 2. 레시피에 포함된 모든 자원의 단가 한 번에 조회
+  const itemNames = recipe.map(item => item.itemName);
   const prices = await db.select().from(PriceList).where(
-    inArray(PriceList.itemCode, itemCodes)
+    inArray(PriceList.itemName, itemNames)
   );
   
   // 가격 조회를 쉽게 하기 위해 Map으로 변환
-  const priceMap = new Map(prices.map(p => [p.itemCode, p]));
+  const priceMap = new Map(prices.map(p => [p.itemName, p]));
 
   // 3. 1m당 직접 공사비 계산
   let directMaterialCostPerMeter = 0;
   let directLaborCostPerMeter = 0;
   let directEquipmentCostPerMeter = 0;
-  const lineItems: CalculationResult['lineItems'] = [];
+  const lineItems: LineItem[] = [];
   
   // 공종별 비용을 집계하기 위한 맵 생성
   const categoryMap = new Map<string, {
@@ -319,17 +319,17 @@ export async function calculateConstructionCost(options: CalculationOptions): Pr
     totalCost: number;
   }>();
 
-  for (const rule of rules) {
-    const priceInfo = priceMap.get(rule.itemCode);
+  for (const item of recipe) {
+    const priceInfo = priceMap.get(item.itemName);
     if (!priceInfo) {
       // 이 오류는 데이터 정합성이 맞으면 발생하지 않아야 함
-      throw new Error(`단가 목록에 없는 품목 코드(${rule.itemCode})가 규칙에 포함되어 있습니다.`);
+      throw new Error(`단가 목록에 없는 품목(${item.itemName})이 레시피에 포함되어 있습니다.`);
     }
 
-    const costPerMeter = rule.quantity * priceInfo.unitPrice;
+    const costPerMeter = item.quantity * priceInfo.unitPrice;
     
     // 공종 정보 가져오기
-    const workCategory = rule.workCategory || '기타';
+    const workCategory = item.workCategory || '기타';
     
     // 공종별 비용 집계 맵 업데이트
     if (!categoryMap.has(workCategory)) {
@@ -362,10 +362,10 @@ export async function calculateConstructionCost(options: CalculationOptions): Pr
     lineItems.push({
       itemName: priceInfo.itemName,
       unit: priceInfo.unit || '개',
-      quantity: rule.quantity * options.length,
+      quantity: item.quantity * options.length,
       unitPrice: priceInfo.unitPrice,
       totalPrice: costPerMeter * options.length,
-      type: priceInfo.type as any,
+      type: priceInfo.type as 'material' | 'labor' | 'equipment',
       workCategory: workCategory
     });
   }
