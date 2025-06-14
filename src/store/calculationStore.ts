@@ -7,6 +7,10 @@ export interface CategoryCost {
   laborCost: number;
   equipmentCost: number;
   totalCost: number;
+  // 호환성을 위한 별칭 속성 추가
+  material?: number;
+  labor?: number;
+  equipment?: number;
 }
 
 export interface LineItem {

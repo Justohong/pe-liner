@@ -437,7 +437,11 @@ export async function calculateConstructionCost(options: CalculationOptions): Pr
     materialCost: data.materialCost,
     laborCost: data.laborCost,
     equipmentCost: data.equipmentCost,
-    totalCost: data.totalCost
+    totalCost: data.totalCost,
+    // 호환성을 위한 별칭 추가
+    material: data.materialCost,
+    labor: data.laborCost,
+    equipment: data.equipmentCost
   }));
 
   // 8. summary 객체 조립
