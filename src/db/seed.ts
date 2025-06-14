@@ -272,8 +272,14 @@ async function seedUnitPriceRulesFromExcel(filePath: string, pipeType: 'ductile'
   const content = fs.readFileSync(filePath);
   // CSV 파싱 옵션을 수정하여 빈 행도 유지하고, 컬럼이 없는 raw array 형태로 받습니다.
   const records: string[][] = parse(content, {
-    from_line: 2, // 헤더 행 다음부터 시작
+    from_line: 1, // 첫 번째 행부터 시작
   });
+
+  // 디버깅을 위해 처음 몇 개 행 출력
+  console.log("첫 5개 행 샘플:");
+  for (let i = 0; i < Math.min(5, records.length); i++) {
+    console.log(`행 ${i+1}:`, records[i]);
+  }
 
   const rulesToInsert = [];
   let currentWorkCategory = '관 갱생공'; // 현재 공종을 추적하는 변수
@@ -294,7 +300,10 @@ async function seedUnitPriceRulesFromExcel(filePath: string, pipeType: 'ductile'
     // 행이 비어있거나, 의미 없는 데이터는 건너뜁니다.
     if (!col_A && !col_B) continue;
     
-    // 1. 관경 컨텍스트 헤더 식별 (예: "No. 1 관 갱생공 (D300)")
+    // 디버깅 로그 추가
+    console.log(`처리 중인 행: ${col_A || '-'} | ${col_B || '-'} | ${col_C || '-'} | ${col_D || '-'} | ${col_E || '-'}`);
+    
+    // 관경 컨텍스트 헤더 식별 (예: "No. 1 관 갱생공 (D300)")
     if (col_A && col_A.includes('관 갱생공')) {
         const diameterMatch = col_A.match(/D(\d+)/i);
         const diameter = diameterMatch ? parseInt(diameterMatch[1], 10) : 0;
@@ -305,7 +314,7 @@ async function seedUnitPriceRulesFromExcel(filePath: string, pipeType: 'ductile'
         continue;
     }
     
-    // 2. 실제 데이터 항목(품명, 수량 등이 있는 행) 처리
+    // 실제 데이터 항목(품명, 수량 등이 있는 행) 처리
     // 첫 번째 컬럼이 비어있고, 품명이 있는 경우 (실제 항목 행)
     if (!col_A && col_B) {
       const itemName = col_B.trim();
@@ -335,10 +344,8 @@ async function seedUnitPriceRulesFromExcel(filePath: string, pipeType: 'ductile'
     // 기존 규칙 삭제 후 새로 삽입
     await db.delete(UnitPriceRules).where(eq(UnitPriceRules.pipeType, pipeType));
     await db.insert(UnitPriceRules).values(rulesToInsert);
-    console.log(`[Seeding Rules] Completed for ${pipeType}. ${rulesToInsert.length} rules inserted.`);
-  } else {
-    console.log(`[Seeding Rules] No rules to insert for ${pipeType}.`);
   }
+  console.log(`[Seeding Rules] Completed for ${pipeType}. ${rulesToInsert.length} rules inserted.`);
 }
 
 /**
