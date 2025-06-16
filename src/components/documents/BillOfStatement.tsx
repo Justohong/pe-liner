@@ -1,16 +1,17 @@
 'use client';
-import { Fragment } from 'react';
 import type { CalculationResult } from '@/store/calculationStore';
 
-const formatNumber = (num: number): string => num ? Math.round(num).toLocaleString() : '0';
+// 숫자를 쉼표 포맷으로 변환하는 헬퍼 함수
+const formatNumber = (num: number) => num ? Math.round(num).toLocaleString() : '0';
 
 interface BillOfStatementProps {
-    result: CalculationResult;
+  result: CalculationResult;
 }
 
 export default function BillOfStatement({ result }: BillOfStatementProps) {
-    if (!result?.costsByCategory) {
-        return <p>내역서 데이터를 표시할 정보가 부족합니다.</p>;
+    // result 객체 또는 필요한 데이터가 없을 경우를 대비한 방어 코드
+    if (!result?.costsByCategory || !result.overheadDetails) {
+        return <p>내역서 상세 정보를 표시할 데이터가 부족합니다.</p>;
     }
 
     const { 
@@ -23,12 +24,16 @@ export default function BillOfStatement({ result }: BillOfStatementProps) {
     } = result;
 
     const totalDirectCost = directMaterialCost + directLaborCost + directEquipmentCost;
-    const totalOverheadCost = overheadDetails?.reduce((sum: number, item: { amount: number }) => sum + item.amount, 0) || 0;
+    const totalOverheadCost = overheadDetails.reduce((sum: number, item: { amount: number }) => sum + item.amount, 0);
     
-    const categoryOrder = ["토공", "가시설공", "관접합공", "비굴착갱생공", "포장공", "사급자재비", "부대공"];
+    // 엑셀의 주요 공종 순서 정의
+    const categoryOrder = ["토공", "가시설공", "관접합공", "비굴착갱생공", "포장공", "사급자재비", "부대공", "관 갱생공"];
+    
+    // 정의된 순서에 따라 공종을 정렬
     const sortedCategories = Object.entries(costsByCategory).sort(([a], [b]) => {
         const indexA = categoryOrder.indexOf(a);
         const indexB = categoryOrder.indexOf(b);
+        // 정의되지 않은 카테고리는 뒤로 보냄
         if (indexA === -1) return 1;
         if (indexB === -1) return -1;
         return indexA - indexB;
@@ -45,15 +50,16 @@ export default function BillOfStatement({ result }: BillOfStatementProps) {
                     <span>{formatNumber(totalDirectCost)} 원</span>
                 </div>
 
-                {/* 공종별 상세 내역 루프 (이 부분이 핵심 수정 영역) */}
+                {/* 공종별 상세 내역 루프 (핵심 수정 부분) */}
                 {sortedCategories.map(([category, costs]: [string, any]) => {
                     const categoryTotal = (costs.material || 0) + (costs.labor || 0) + (costs.equipment || 0);
+                    // 합계가 0인 공종은 화면에 표시하지 않음
                     if (categoryTotal === 0) return null;
 
                     return (
                         <div key={category} className="pl-4 py-2 border-b border-gray-100">
                             {/* 공종명과 공종 합계 */}
-                            <div className="flex justify-between font-semibold">
+                            <div className="flex justify-between font-semibold text-sm">
                                 <span>- {category}</span>
                                 <span>{formatNumber(categoryTotal)} 원</span>
                             </div>
@@ -74,7 +80,7 @@ export default function BillOfStatement({ result }: BillOfStatementProps) {
                 </div>
                 {/* 간접비 상세 항목 표시 */}
                 <div className="pl-4 space-y-1 text-xs">
-                    {overheadDetails?.map(item => (
+                    {overheadDetails.map(item => (
                         <div key={item.itemName} className="flex justify-between text-gray-700">
                             <span>- {item.itemName}</span>
                             <span>{formatNumber(item.amount)} 원</span>
